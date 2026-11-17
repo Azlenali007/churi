@@ -59,7 +59,7 @@ $headerTagline = Helpers::setting('site_tagline', 'Grow Your Social Media');
                 ?>
                 <button type="button"
                         :disabled="switching"
-                        onclick="window.smmSwitchCurrency('<?= Validator::e($cCode) ?>')"
+                        @click.prevent="if (switching) return; switching = true; openCurr = false; window.smmSwitchCurrency('<?= Validator::e($cCode) ?>').finally(() => { switching = false; })"
                         class="w-full px-3.5 py-2.5 text-left flex items-center justify-between gap-2 text-xs transition <?= $isCurrent ? 'bg-purple-50 text-purple-900 font-extrabold' : 'text-slate-700 hover:bg-purple-50/60 font-semibold' ?>">
                     <span class="flex items-center gap-2.5 min-w-0">
                         <span class="w-7 h-7 rounded-xl <?= $isCurrent ? 'bg-purple-600 text-white' : 'bg-purple-100/80 text-purple-700' ?> flex items-center justify-center font-extrabold shrink-0">

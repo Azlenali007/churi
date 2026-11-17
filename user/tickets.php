@@ -63,4 +63,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-require APP_ROOT . '/themes/classic/tickets.php';
+ThemeManager::renderUserView('tickets', get_defined_vars());

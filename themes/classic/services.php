@@ -40,9 +40,9 @@ foreach ($services as $svc) {
 }
 ?>
 
-<div class="smm-card rounded-3xl p-5 sm:p-6" x-data="{ descModal: null }">
-    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-        <div>
+<div class="smm-card rounded-3xl p-5 sm:p-6 min-w-0 max-w-full overflow-hidden" x-data="{ descModal: null }">
+    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 min-w-0">
+        <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-2">
                 <h1 class="text-xl font-extrabold text-slate-900">Service Directory</h1>
                 <span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[11px] font-extrabold">
@@ -51,30 +51,30 @@ foreach ($services as $svc) {
             </div>
             <p class="text-sm text-slate-500">All available SMM services with live rates per 1,000, limits, and refill/cancel support.</p>
         </div>
-        <form method="GET" action="/user/services.php" class="flex flex-wrap gap-2">
+        <form method="GET" action="/user/services.php" class="w-full lg:w-auto flex flex-col sm:flex-row flex-wrap gap-2 min-w-0">
             <input type="text" name="search" value="<?= Validator::e($search) ?>" placeholder="Search ID or name..."
-                   class="px-4 py-2 rounded-xl border border-purple-200 text-sm outline-none focus:border-purple-600 w-full sm:w-52 bg-white">
-            <select name="category_id" class="px-4 py-2 rounded-xl border border-purple-200 text-sm outline-none focus:border-purple-600 bg-white">
+                   class="px-4 py-2 rounded-xl border border-purple-200 text-sm outline-none focus:border-purple-600 w-full sm:w-52 min-w-0 bg-white">
+            <select name="category_id" class="px-4 py-2 rounded-xl border border-purple-200 text-sm outline-none focus:border-purple-600 bg-white w-full sm:w-64 sm:max-w-[260px] min-w-0 truncate">
                 <option value="0">All Categories</option>
                 <?php foreach ($categories as $c): ?>
                     <option value="<?= (int)$c['id'] ?>" <?= $categoryId === (int)$c['id'] ? 'selected' : '' ?>><?= Validator::e($c['name']) ?></option>
                 <?php endforeach; ?>
             </select>
-            <button type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 text-white text-sm font-bold shadow-sm">Filter</button>
+            <button type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 text-white text-sm font-bold shadow-sm shrink-0">Filter</button>
         </form>
     </div>
 
     <?php if (empty($grouped)): ?>
         <div class="text-center py-12 text-sm text-slate-500">No active services matched your search.</div>
     <?php else: ?>
-        <div class="space-y-7">
+        <div class="space-y-7 min-w-0">
             <?php foreach ($grouped as $catName => $bundle): ?>
-            <div>
-                <div class="flex items-center gap-3 px-4 py-3 rounded-2xl bg-[#1B1145] text-white mb-3">
-                    <?= Helpers::platformIcon((string)$bundle['platform'], 'w-7 h-7') ?>
-                    <h2 class="font-bold text-sm sm:text-base"><?= Validator::e($catName) ?></h2>
+            <div class="min-w-0">
+                <div class="flex items-start sm:items-center gap-3 px-4 py-3 rounded-2xl bg-[#1B1145] text-white mb-3 min-w-0">
+                    <span class="shrink-0"><?= Helpers::platformIcon((string)$bundle['platform'], 'w-7 h-7') ?></span>
+                    <h2 class="font-bold text-sm sm:text-base min-w-0 flex-1 break-words [overflow-wrap:anywhere] leading-snug"><?= Validator::e($catName) ?></h2>
                 </div>
-                <div class="overflow-x-auto">
+                <div class="w-full max-w-full overflow-x-auto">
                     <table class="w-full text-left text-sm">
                         <thead>
                             <tr class="border-b border-purple-100 text-xs uppercase text-slate-400">
@@ -89,12 +89,12 @@ foreach ($services as $svc) {
                         <tbody class="divide-y divide-slate-100">
                             <?php foreach ($bundle['items'] as $s): $p = FlashSale::getServicePricing($s); ?>
                             <tr class="hover:bg-purple-50/40">
-                                <td class="py-3 px-3 font-bold text-slate-500">#<?= (int)$s['id'] ?></td>
-                                <td class="py-3 px-3">
-                                    <div class="flex items-center gap-2.5">
-                                        <?= Helpers::platformIcon((string)$s['platform'], 'w-6 h-6') ?>
-                                        <div>
-                                            <div class="font-semibold text-slate-900"><?= Validator::e($s['name']) ?></div>
+                                <td class="py-3 px-3 font-bold text-slate-500 whitespace-nowrap">#<?= (int)$s['id'] ?></td>
+                                <td class="py-3 px-3 min-w-[200px] max-w-[340px]">
+                                    <div class="flex items-center gap-2.5 min-w-0">
+                                        <span class="shrink-0"><?= Helpers::platformIcon((string)$s['platform'], 'w-6 h-6') ?></span>
+                                        <div class="min-w-0">
+                                            <div class="font-semibold text-slate-900 break-words [overflow-wrap:anywhere]"><?= Validator::e($s['name']) ?></div>
                                             <?php if ($s['avg_time']): ?><div class="text-[11px] text-slate-400">Avg: <?= Validator::e($s['avg_time']) ?></div><?php endif; ?>
                                         </div>
                                     </div>

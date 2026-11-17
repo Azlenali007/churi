@@ -51,4 +51,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Helpers::redirect('/user/orders.php');
 }
 
-require APP_ROOT . '/themes/classic/orders.php';
+ThemeManager::renderUserView('orders', get_defined_vars());

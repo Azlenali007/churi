@@ -269,8 +269,10 @@ require __DIR__ . '/includes/header.php';
                             <input type="hidden" name="provider_id" value="<?= (int)$p['id'] ?>">
                             <button type="submit" class="px-3 py-1.5 rounded-xl bg-white border border-purple-200 text-purple-800 font-bold">Test &amp; Balance</button>
                         </form>
-                        <button type="button" @click="importProv = <?= Validator::e(json_encode(['id' => $p['id'], 'name' => $p['name'], 'margin' => $p['default_profit_margin']])) ?>"
-                                class="px-3 py-1.5 rounded-xl bg-purple-600 text-white font-bold">Import &amp; Sync Categories/Services</button>
+                        <a href="/admin/provider-import.php?provider_id=<?= (int)$p['id'] ?>"
+                           class="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-sm transition">
+                            Fetch &amp; Select Services &rarr;
+                        </a>
                         <form method="POST">
                             <?= CSRF::field() ?>
                             <input type="hidden" name="action" value="recalculate_prices">

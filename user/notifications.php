@@ -9,4 +9,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'mark_
     Helpers::redirect('/user/notifications.php');
 }
 
-require APP_ROOT . '/themes/classic/notifications.php';
+ThemeManager::renderUserView('notifications', get_defined_vars());

@@ -26,7 +26,7 @@ class Auth
             'domain'   => '',
             'secure'   => $isHttps,
             'httponly' => true,
-            'samesite' => 'Lax',
+            'samesite' => $isHttps ? 'None' : 'Lax',
         ]);
         ini_set('session.use_strict_mode', '1');
         session_start();

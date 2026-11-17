@@ -11,17 +11,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     CSRF::requireValid();
 }
 
-// Allow currency preference change for authenticated users (and session guests on public storefront)
+if (!$user) {
+    Helpers::jsonResponse(['ok' => false, 'error' => 'Authentication required.'], 401);
+}
+
+// Allow currency preference change strictly for authenticated logged-in users
 if ($action === 'set_currency') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         Helpers::jsonResponse(['ok' => false, 'error' => 'Method not allowed.'], 405);
     }
     $code = strtoupper(trim((string)($_POST['currency'] ?? '')));
-    $ok = Currency::setUserDisplayCurrency($code, $user ? (int)$user['id'] : null);
+    $ok = Currency::setUserDisplayCurrency($code, (int)$user['id']);
     if (!$ok) {
-        Helpers::jsonResponse(['ok' => false, 'error' => 'Selected currency is not supported or currently disabled.'], 400);
+        Helpers::jsonResponse(['ok' => false, 'error' => 'Selected currency is not supported or failed to save.'], 400);
     }
     $curr = Currency::getCurrency($code);
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
     Helpers::jsonResponse([
         'ok'       => true,
         'currency' => [
@@ -31,10 +38,6 @@ if ($action === 'set_currency') {
             'exchange_rate' => $curr['exchange_rate'],
         ],
     ]);
-}
-
-if (!$user) {
-    Helpers::jsonResponse(['ok' => false, 'error' => 'Authentication required.'], 401);
 }
 
 if ($action === 'rzp_create') {

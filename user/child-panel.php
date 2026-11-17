@@ -123,4 +123,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Helpers::redirect('/user/child-panel.php?panel_id=' . $panelId);
 }
 
-require APP_ROOT . '/themes/classic/child-panel.php';
+ThemeManager::renderUserView('child-panel', get_defined_vars());

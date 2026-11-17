@@ -259,6 +259,15 @@ require __DIR__ . '/includes/header.php';
             </form>
         </div>
 
+        <div class="smm-card rounded-3xl p-6">
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <h2 class="text-base font-extrabold text-slate-900">User Dashboard Theme</h2>
+                <span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[11px] font-bold uppercase"><?= Validator::e(ThemeManager::getActiveThemeKey()) ?></span>
+            </div>
+            <p class="text-xs text-slate-500 mb-3">Switch between Classic Purple and the new SwipeX swipe-card UI cleanly.</p>
+            <a href="/admin/themes.php" class="block text-center w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow">Manage Themes &rarr;</a>
+        </div>
+
         <div class="smm-card rounded-3xl p-6 text-xs space-y-2">
             <h2 class="text-base font-extrabold text-slate-900 mb-3">System Environment</h2>
             <div class="flex justify-between py-1 border-b border-slate-100"><span class="text-slate-500">PHP Version</span><span class="font-bold"><?= PHP_VERSION ?></span></div>

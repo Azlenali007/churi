@@ -29,4 +29,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'manua
     Helpers::redirect('/user/add-funds.php');
 }
 
-require APP_ROOT . '/themes/classic/add-funds.php';
+ThemeManager::renderUserView('add-funds', get_defined_vars());

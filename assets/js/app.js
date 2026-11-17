@@ -120,18 +120,33 @@ window.smmSwitchCurrency = function (code) {
 
   return fetch('/api/ajax.php', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-CSRF-TOKEN': csrf,
+    },
     body: body.toString(),
   })
-    .then((r) => r.json())
-    .then((res) => {
-      if (res && res.ok) {
-        window.location.reload();
-      } else {
-        window.showToast((res && res.error) || 'Could not change display currency.', 'error');
+    .then(async (r) => {
+      const text = await r.text();
+      let res = null;
+      try {
+        res = JSON.parse(text);
+      } catch (e) {
+        throw new Error('Invalid server response.');
       }
+      if (res && res.ok) {
+        window.showToast(`Display currency switched to ${res.currency?.code || code}`, 'success');
+        setTimeout(() => window.location.reload(), 150);
+        return res;
+      }
+      window.showToast((res && res.error) || 'Could not change display currency.', 'error');
+      return res;
     })
     .catch(() => {
       window.showToast('Network error while updating display currency.', 'error');
+      return null;
     });
 };

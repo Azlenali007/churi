@@ -397,10 +397,16 @@ $isActiveAccount = ($user['status'] ?? 'active') === 'active';
                             </div>
                         </div>
                         <div class="flex items-center gap-2.5 shrink-0">
+                            <?php
+                                $ordOrig = Currency::formatRaw((string)$ord['charge'], $ordCurr, 2, true);
+                                $ordDisp = ($displayCode !== $ordCurr)
+                                    ? Currency::display(Currency::convert((string)$ord['charge'], $ordCurr, $baseCode, 4), $displayCode, 2, true)
+                                    : $ordOrig;
+                            ?>
                             <div class="text-right hidden sm:block tabular-nums">
-                                <div class="text-xs font-extrabold text-slate-900"><?= Currency::formatRaw((string)$ord['charge'], $ordCurr, 2, true) ?></div>
+                                <div class="text-xs font-extrabold text-slate-900"><?= Validator::e($ordDisp) ?></div>
                                 <?php if ($displayCode !== $ordCurr): ?>
-                                    <div class="text-[10px] text-slate-400">&approx; <?= Currency::display(Currency::convert((string)$ord['charge'], $ordCurr, $baseCode, 4), null, 2, true) ?></div>
+                                    <div class="text-[10px] text-slate-400">Orig: <?= Validator::e($ordOrig) ?></div>
                                 <?php endif; ?>
                             </div>
                             <?= Helpers::statusBadge((string)$ord['status']) ?>
@@ -502,12 +508,18 @@ $isActiveAccount = ($user['status'] ?? 'active') === 'active';
                             <div class="font-semibold text-slate-800 truncate"><?= Validator::e($tx['description']) ?></div>
                             <div class="text-[11px] text-slate-400"><?= Helpers::timeAgo($tx['created_at']) ?></div>
                         </div>
+                        <?php
+                            $txOrig = Currency::formatRaw((string)$tx['amount'], $txCurr, 2, true);
+                            $txDisp = ($displayCode !== $txCurr)
+                                ? Currency::display(Currency::convert((string)$tx['amount'], $txCurr, $baseCode, 4), $displayCode, 2, true)
+                                : $txOrig;
+                        ?>
                         <div class="text-right shrink-0 tabular-nums">
                             <div class="font-extrabold <?= $isCredit ? 'text-emerald-600' : 'text-rose-600' ?>">
-                                <?= $isCredit ? '+' : '-' ?><?= Currency::formatRaw((string)$tx['amount'], $txCurr, 2, true) ?>
+                                <?= $isCredit ? '+' : '-' ?><?= Validator::e($txDisp) ?>
                             </div>
                             <?php if ($displayCode !== $txCurr): ?>
-                                <div class="text-[10px] text-slate-400">&approx; <?= Currency::display(Currency::convert((string)$tx['amount'], $txCurr, $baseCode, 4), null, 2, true) ?></div>
+                                <div class="text-[10px] text-slate-400">Orig: <?= $isCredit ? '+' : '-' ?><?= Validator::e($txOrig) ?></div>
                             <?php endif; ?>
                         </div>
                     </div>

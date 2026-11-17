@@ -315,16 +315,24 @@ class Currency
         if (!isset($enabled[$code])) {
             return false;
         }
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION['display_currency'] = $code;
-        }
         if ($userId !== null && $userId > 0) {
             try {
                 Database::execute("UPDATE users SET preferred_currency = ? WHERE id = ?", [$code, $userId]);
             } catch (Throwable $e) {
-                Logger::errorFile('Currency::setUserDisplayCurrency DB update error: ' . $e->getMessage());
+                // Attempt self-healing migration once if preferred_currency column was missing
+                self::ensureSchema();
+                try {
+                    Database::execute("UPDATE users SET preferred_currency = ? WHERE id = ?", [$code, $userId]);
+                } catch (Throwable $e2) {
+                    Logger::errorFile('Currency::setUserDisplayCurrency DB update error: ' . $e2->getMessage());
+                    return false;
+                }
             }
         }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION['display_currency'] = $code;
+        }
+        self::$activeDisplayOverride = $code;
         return true;
     }
 

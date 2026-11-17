@@ -215,14 +215,19 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                     <tbody class="divide-y divide-slate-100">
                         <?php foreach ($payments as $pay):
                             $payCurr = strtoupper((string)($pay['currency'] ?? $baseCode));
+                            if ($payCurr === '') $payCurr = $baseCode;
+                            $payOrig = Currency::formatRaw((string)$pay['amount'], $payCurr, 2, true);
+                            $payDisp = ($displayCode !== $payCurr)
+                                ? Currency::display(Currency::convertToBase((string)$pay['amount'], $payCurr, 4), $displayCode, 2, true)
+                                : $payOrig;
                         ?>
                         <tr>
                             <td class="py-3 pr-3 font-bold text-slate-800"><?= Validator::e($pay['transaction_ref']) ?></td>
                             <td class="py-3 pr-3 text-slate-600"><?= Validator::e($pay['gateway_name']) ?></td>
-                            <td class="py-3 pr-3 font-bold text-purple-700 tabular-nums">
-                                <?= Currency::formatRaw((string)$pay['amount'], $payCurr, 2, true) ?>
+                            <td class="py-3 pr-3 font-bold text-purple-700 tabular-nums whitespace-nowrap">
+                                <div><?= Validator::e($payDisp) ?></div>
                                 <?php if ($displayCode !== $payCurr): ?>
-                                    <div class="text-[10px] font-medium text-slate-400">&approx; <?= Currency::display(Currency::convertToBase((string)$pay['amount'], $payCurr, 4), $displayCode, 2, true) ?></div>
+                                    <div class="text-[10px] font-medium text-slate-400">Orig: <?= Validator::e($payOrig) ?></div>
                                 <?php endif; ?>
                             </td>
                             <td class="py-3 pr-3"><?= Helpers::statusBadge((string)$pay['status']) ?></td>
@@ -253,17 +258,31 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                         <?php foreach ($transactions as $tx):
                             $isCredit = in_array($tx['type'], ['credit','refund','referral_bonus','admin_add','payment'], true);
                             $txCurr = strtoupper((string)($tx['currency_code'] ?? $baseCode));
+                            if ($txCurr === '') $txCurr = $baseCode;
+                            $txOrig = Currency::formatRaw((string)$tx['amount'], $txCurr, 2, true);
+                            $txDisp = ($displayCode !== $txCurr)
+                                ? Currency::display(Currency::convertToBase((string)$tx['amount'], $txCurr, 4), $displayCode, 2, true)
+                                : $txOrig;
+                            $balOrig = Currency::formatRaw((string)$tx['balance_after'], $txCurr, 2, true);
+                            $balDisp = ($displayCode !== $txCurr)
+                                ? Currency::display(Currency::convertToBase((string)$tx['balance_after'], $txCurr, 4), $displayCode, 2, true)
+                                : $balOrig;
                         ?>
                         <tr>
                             <td class="py-3 pr-3 font-semibold uppercase text-slate-600"><?= Validator::e($tx['type']) ?></td>
                             <td class="py-3 pr-3 text-slate-700"><?= Validator::e($tx['description']) ?></td>
-                            <td class="py-3 pr-3 font-bold tabular-nums <?= $isCredit ? 'text-emerald-600' : 'text-rose-600' ?>">
-                                <?= $isCredit ? '+' : '-' ?><?= Currency::formatRaw((string)$tx['amount'], $txCurr, 2, true) ?>
+                            <td class="py-3 pr-3 font-bold tabular-nums whitespace-nowrap <?= $isCredit ? 'text-emerald-600' : 'text-rose-600' ?>">
+                                <div><?= $isCredit ? '+' : '-' ?><?= Validator::e($txDisp) ?></div>
                                 <?php if ($displayCode !== $txCurr): ?>
-                                    <div class="text-[10px] font-medium text-slate-400">&approx; <?= Currency::display(Currency::convertToBase((string)$tx['amount'], $txCurr, 4), $displayCode, 2, true) ?></div>
+                                    <div class="text-[10px] font-medium text-slate-400">Orig: <?= $isCredit ? '+' : '-' ?><?= Validator::e($txOrig) ?></div>
                                 <?php endif; ?>
                             </td>
-                            <td class="py-3 pr-3 font-semibold text-slate-800 tabular-nums"><?= Currency::formatRaw((string)$tx['balance_after'], $txCurr, 2, true) ?></td>
+                            <td class="py-3 pr-3 font-semibold text-slate-800 tabular-nums whitespace-nowrap">
+                                <div><?= Validator::e($balDisp) ?></div>
+                                <?php if ($displayCode !== $txCurr): ?>
+                                    <div class="text-[10px] font-normal text-slate-400">Orig: <?= Validator::e($balOrig) ?></div>
+                                <?php endif; ?>
+                            </td>
                             <td class="py-3 text-right text-slate-400"><?= date('M j, H:i', strtotime($tx['created_at'])) ?></td>
                         </tr>
                         <?php endforeach; ?>
@@ -288,10 +307,20 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                     <tbody class="divide-y divide-slate-100">
                         <?php foreach ($refunds as $rf):
                             $rfCurr = strtoupper((string)($rf['currency_code'] ?? $baseCode));
+                            if ($rfCurr === '') $rfCurr = $baseCode;
+                            $rfOrig = Currency::formatRaw((string)$rf['amount'], $rfCurr, 2, true);
+                            $rfDisp = ($displayCode !== $rfCurr)
+                                ? Currency::display(Currency::convertToBase((string)$rf['amount'], $rfCurr, 4), $displayCode, 2, true)
+                                : $rfOrig;
                         ?>
                         <tr>
                             <td class="py-3 pr-3 text-slate-700"><?= Validator::e($rf['description']) ?></td>
-                            <td class="py-3 pr-3 font-bold text-emerald-600 tabular-nums">+<?= Currency::formatRaw((string)$rf['amount'], $rfCurr, 2, true) ?></td>
+                            <td class="py-3 pr-3 font-bold text-emerald-600 tabular-nums whitespace-nowrap">
+                                <div>+<?= Validator::e($rfDisp) ?></div>
+                                <?php if ($displayCode !== $rfCurr): ?>
+                                    <div class="text-[10px] font-medium text-slate-400">Orig: +<?= Validator::e($rfOrig) ?></div>
+                                <?php endif; ?>
+                            </td>
                             <td class="py-3 text-right text-slate-400"><?= date('M j, H:i', strtotime($rf['created_at'])) ?></td>
                         </tr>
                         <?php endforeach; ?>

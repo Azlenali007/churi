@@ -11,4 +11,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regen
     Helpers::redirect('/user/reseller-api.php');
 }
 
-require APP_ROOT . '/themes/classic/reseller-api.php';
+ThemeManager::renderUserView('reseller-api', get_defined_vars());

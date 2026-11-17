@@ -47,4 +47,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Helpers::redirect('/user/profile.php');
 }
 
-require APP_ROOT . '/themes/classic/profile.php';
+ThemeManager::renderUserView('profile', get_defined_vars());

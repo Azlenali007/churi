@@ -52,15 +52,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'bulk_action') {
         $ids = array_map('intval', $_POST['service_ids'] ?? []);
-        $bulkOp = $_POST['bulk_op'] ?? '';
-        if (!empty($ids)) {
-            $ph = implode(',', array_fill(0, count($ids), '?'));
-            if ($bulkOp === 'enable') {
-                Database::execute("UPDATE services SET status = 'active' WHERE id IN ($ph)", $ids);
-                Helpers::setFlash('success', count($ids) . ' services enabled.');
-            } elseif ($bulkOp === 'disable') {
-                Database::execute("UPDATE services SET status = 'inactive' WHERE id IN ($ph)", $ids);
-                Helpers::setFlash('success', count($ids) . ' services disabled.');
+        $bulkOp = (string)($_POST['bulk_op'] ?? '');
+        if (empty($ids)) {
+            Helpers::setFlash('error', 'Please select at least one service to run a bulk operation.');
+        } elseif ($bulkOp === '') {
+            Helpers::setFlash('error', 'Please choose a bulk operation first.');
+        } else {
+            $res = CategoryMapper::bulkOperateLocalServices($bulkOp, $ids, [
+                'category_id'    => (int)($_POST['bulk_category_id'] ?? 0),
+                'margin_percent' => trim((string)($_POST['bulk_margin_percent'] ?? '')),
+                'price_mode'     => (string)($_POST['bulk_price_mode'] ?? 'fixed'),
+                'price_value'    => trim((string)($_POST['bulk_price_value'] ?? '')),
+                'status'         => (string)($_POST['bulk_status'] ?? 'active'),
+            ], null, (int)$admin['id']);
+            if ($res['ok']) {
+                $parts = [];
+                if (!empty($res['updated'])) $parts[] = $res['updated'] . ' updated';
+                if (!empty($res['deleted'])) $parts[] = $res['deleted'] . ' deleted';
+                if (!empty($res['skipped'])) $parts[] = $res['skipped'] . ' skipped/disabled';
+                Helpers::setFlash('success', 'Bulk operation complete: ' . ($parts ? implode(', ', $parts) : 'done') . '.');
+            } else {
+                Helpers::setFlash('error', $res['error'] ?? 'Bulk operation failed.');
             }
         }
     }
@@ -69,8 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $categories = Database::fetchAll("SELECT * FROM categories ORDER BY sort_order ASC, id ASC");
-$subcategories = Database::fetchAll("SELECT * FROM subcategories ORDER BY sort_order ASC");
+$providers = Database::fetchAll("SELECT id, name FROM providers ORDER BY id DESC");
 $catFilter = (int)($_GET['category_id'] ?? 0);
+$provFilter = (int)($_GET['provider_id'] ?? 0);
+$searchFilter = Validator::str($_GET['search'] ?? '', 120);
 
 $sql = "SELECT s.*, c.name AS category_name, p.name AS provider_name, p.currency_code AS prov_currency
         FROM services s
@@ -82,6 +96,16 @@ if ($catFilter > 0) {
     $sql .= " AND s.category_id = ?";
     $params[] = $catFilter;
 }
+if ($provFilter > 0) {
+    $sql .= " AND s.provider_id = ?";
+    $params[] = $provFilter;
+}
+if ($searchFilter !== '') {
+    $sql .= " AND (s.name LIKE ? OR s.id = ? OR s.provider_service_id LIKE ?)";
+    $params[] = '%' . $searchFilter . '%';
+    $params[] = ctype_digit($searchFilter) ? (int)$searchFilter : 0;
+    $params[] = '%' . $searchFilter . '%';
+}
 $sql .= " ORDER BY c.sort_order ASC, s.sort_order ASC, s.id DESC LIMIT 250";
 $services = Database::fetchAll($sql, $params);
 
@@ -90,20 +114,27 @@ require __DIR__ . '/includes/sidebar.php';
 require __DIR__ . '/includes/header.php';
 ?>
 
-<div class="space-y-6" x-data="{ showForm: false, editSvc: null }">
+<div class="space-y-6" x-data="{ showForm: false, editSvc: null, selectedCount: 0, bulkOp: '' }">
     <div class="smm-card rounded-3xl p-6">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
-            <form method="GET" class="flex gap-2">
-                <select name="category_id" class="px-3.5 py-2 rounded-xl border border-purple-200 text-xs">
+            <form method="GET" class="flex flex-wrap gap-2">
+                <input type="text" name="search" value="<?= Validator::e($searchFilter) ?>" placeholder="Search name or ID..." class="px-3.5 py-2 rounded-xl border border-purple-200 text-xs w-44">
+                <select name="category_id" class="px-3.5 py-2 rounded-xl border border-purple-200 text-xs max-w-[210px]">
                     <option value="0">All Categories</option>
                     <?php foreach ($categories as $c): ?>
                         <option value="<?= (int)$c['id'] ?>" <?= $catFilter === (int)$c['id'] ? 'selected' : '' ?>><?= Validator::e($c['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <select name="provider_id" class="px-3.5 py-2 rounded-xl border border-purple-200 text-xs">
+                    <option value="0">All Providers</option>
+                    <?php foreach ($providers as $pr): ?>
+                        <option value="<?= (int)$pr['id'] ?>" <?= $provFilter === (int)$pr['id'] ? 'selected' : '' ?>><?= Validator::e($pr['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
                 <button type="submit" class="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold">Filter</button>
             </form>
             <div class="flex gap-2">
-                <a href="/admin/providers.php" class="px-4 py-2 rounded-xl bg-indigo-100 text-indigo-800 text-xs font-bold">Import from Provider</a>
+                <a href="/admin/provider-import.php" class="px-4 py-2 rounded-xl bg-indigo-100 text-indigo-800 text-xs font-bold">Fetch &amp; Select from Provider</a>
                 <button type="button" @click="editSvc = null; showForm = !showForm" class="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold">+ Add Service</button>
             </div>
         </div>
@@ -187,23 +218,44 @@ require __DIR__ . '/includes/header.php';
         </form>
 
         <!-- Bulk Table -->
-        <form method="POST">
+        <form method="POST" @submit="if (bulkOp === 'delete' && !confirm('Delete selected services? (Services with orders will be marked inactive.)')) { $event.preventDefault(); }">
             <?= CSRF::field() ?>
             <input type="hidden" name="action" value="bulk_action">
-            <div class="flex gap-2 mb-3 text-xs">
-                <select name="bulk_op" class="px-3 py-1.5 rounded-xl border border-purple-200">
-                    <option value="">Bulk Update...</option>
+            <div class="flex flex-wrap items-center gap-2 mb-3 p-3 rounded-2xl bg-[#F6F4FC] border border-purple-100 text-xs">
+                <select name="bulk_op" x-model="bulkOp" class="px-3 py-1.5 rounded-xl border border-purple-200 bg-white font-bold">
+                    <option value="">Bulk Action...</option>
                     <option value="enable">Enable Selected</option>
                     <option value="disable">Disable Selected</option>
+                    <option value="set_status">Update Service Status</option>
+                    <option value="assign_category">Assign Platform Category</option>
+                    <option value="update_margin">Update Profit Margin (%)</option>
+                    <option value="update_selling_price">Update Selling Price</option>
+                    <option value="delete">Delete Selected</option>
                 </select>
-                <button type="submit" class="px-3 py-1.5 rounded-xl bg-slate-800 text-white font-bold">Apply</button>
+                <select name="bulk_category_id" x-show="bulkOp === 'assign_category'" x-cloak class="px-3 py-1.5 rounded-xl border border-purple-200 bg-white max-w-[200px]">
+                    <?php foreach ($categories as $c): ?><option value="<?= (int)$c['id'] ?>"><?= Validator::e($c['name']) ?></option><?php endforeach; ?>
+                </select>
+                <input type="number" step="0.01" min="0" name="bulk_margin_percent" x-show="bulkOp === 'update_margin'" x-cloak placeholder="Margin %" class="px-3 py-1.5 rounded-xl border border-purple-200 bg-white w-28">
+                <select name="bulk_price_mode" x-show="bulkOp === 'update_selling_price'" x-cloak class="px-3 py-1.5 rounded-xl border border-purple-200 bg-white">
+                    <option value="fixed">Fixed Price (<?= Validator::e(Currency::getBaseCode()) ?>)</option>
+                    <option value="percent_adjust">% Adjust (+/-)</option>
+                </select>
+                <input type="number" step="0.0001" name="bulk_price_value" x-show="bulkOp === 'update_selling_price'" x-cloak placeholder="Value" class="px-3 py-1.5 rounded-xl border border-purple-200 bg-white w-28">
+                <select name="bulk_status" x-show="bulkOp === 'set_status'" x-cloak class="px-3 py-1.5 rounded-xl border border-purple-200 bg-white">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+                <button type="submit" :class="bulkOp === 'delete' ? 'bg-rose-600' : 'bg-slate-800'" class="px-3.5 py-1.5 rounded-xl text-white font-bold">Apply (<span x-text="selectedCount">0</span>)</button>
             </div>
 
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
                     <thead>
                         <tr class="border-b border-purple-100 uppercase text-slate-400">
-                            <th class="py-2 pr-2"></th>
+                            <th class="py-2 pr-2">
+                                <input type="checkbox" class="rounded text-purple-600"
+                                       @change="const checks = $el.closest('table').querySelectorAll('tbody input[name=\'service_ids[]\']'); checks.forEach(c => c.checked = $event.target.checked); selectedCount = $event.target.checked ? checks.length : 0;">
+                            </th>
                             <th class="py-2 pr-3">ID</th>
                             <th class="py-2 pr-3">Service</th>
                             <th class="py-2 pr-3">Category</th>
@@ -216,7 +268,7 @@ require __DIR__ . '/includes/header.php';
                     <tbody class="divide-y divide-slate-100">
                         <?php foreach ($services as $s): ?>
                         <tr class="hover:bg-purple-50/40">
-                            <td class="py-2.5 pr-2"><input type="checkbox" name="service_ids[]" value="<?= (int)$s['id'] ?>" class="rounded text-purple-600"></td>
+                            <td class="py-2.5 pr-2"><input type="checkbox" name="service_ids[]" value="<?= (int)$s['id'] ?>" @change="selectedCount = $el.closest('tbody').querySelectorAll('input[name=\'service_ids[]\']:checked').length" class="rounded text-purple-600"></td>
                             <td class="py-2.5 pr-3 font-bold">#<?= (int)$s['id'] ?></td>
                             <td class="py-2.5 pr-3">
                                 <div class="flex items-center gap-2">

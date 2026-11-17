@@ -1,4 +1,4 @@
 <?php
 require_once __DIR__ . '/../includes/bootstrap.php';
 $user = Auth::requireUser();
-require APP_ROOT . '/themes/classic/services.php';
+ThemeManager::renderUserView('services', get_defined_vars());

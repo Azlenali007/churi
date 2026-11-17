@@ -21,6 +21,7 @@ require_once __DIR__ . '/../core/ProviderAPI.php';
 require_once __DIR__ . '/../core/CategoryMapper.php';
 require_once __DIR__ . '/../core/OrderService.php';
 require_once __DIR__ . '/../core/PaymentService.php';
+require_once __DIR__ . '/../core/ThemeManager.php';
 
 // Secure error handling: log detailed errors, never display raw credentials or blank pages
 error_reporting(E_ALL);
@@ -66,6 +67,10 @@ try {
         Currency::ensureSchema();
         Helpers::setSetting('currency_schema_v2', '1', 'currency');
     }
+    if (Helpers::setting('provider_import_schema_v1', '0') !== '1') {
+        CategoryMapper::ensureSchema();
+        Helpers::setSetting('provider_import_schema_v1', '1', 'providers');
+    }
 } catch (Throwable $e) {
     Logger::errorFile('Database connection error: ' . $e->getMessage());
     if (!$isInstaller) {
@@ -73,6 +78,12 @@ try {
         echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Database Unavailable</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-slate-50 min-h-screen flex items-center justify-center p-6"><div class="max-w-md w-full bg-white rounded-2xl shadow-lg border border-purple-100 p-8 text-center"><h1 class="text-xl font-bold text-slate-900 mb-2">Database Connection Unavailable</h1><p class="text-sm text-slate-600 mb-4">Unable to connect to MySQL. Please verify your database configuration or run the installer.</p><a href="/install/index.php" class="inline-flex px-5 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold">Open Installer</a></div></body></html>';
         exit;
     }
+}
+
+$scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
+if (str_starts_with($scriptPath, '/user/') || str_starts_with($scriptPath, '/api/') || str_starts_with($scriptPath, '/admin/')) {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
 }
 
 // Configure timezone from settings and sync MySQL session time_zone

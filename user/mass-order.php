@@ -34,4 +34,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $user = Auth::requireUser();
 }
 
-require APP_ROOT . '/themes/classic/mass-order.php';
+ThemeManager::renderUserView('mass-order', get_defined_vars());

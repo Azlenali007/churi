@@ -35,4 +35,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-require APP_ROOT . '/themes/classic/new-order.php';
+ThemeManager::renderUserView('new-order', get_defined_vars());

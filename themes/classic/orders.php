@@ -76,10 +76,13 @@ $baseCode = Currency::getBaseCode();
                         $chargeFormatted = Currency::formatRaw((string)$ord['charge'], $oCurr, 2, true);
                         $unitFormatted = Currency::formatRaw((string)$ord['unit_price'], $oCurr, 2, true);
                         $chargeDisplayEq = ($displayCode !== $oCurr)
-                            ? Currency::display(Currency::convert((string)$ord['charge'], $oCurr, $baseCode, 4), null, 2, true)
+                            ? Currency::display(Currency::convert((string)$ord['charge'], $oCurr, $baseCode, 4), $displayCode, 2, true)
                             : null;
-                        $ord['charge_formatted'] = $chargeFormatted . ($chargeDisplayEq ? ' (≈ ' . $chargeDisplayEq . ')' : '');
-                        $ord['unit_formatted'] = $unitFormatted;
+                        $unitDisplayEq = ($displayCode !== $oCurr)
+                            ? Currency::display(Currency::convert((string)$ord['unit_price'], $oCurr, $baseCode, 4), $displayCode, 2, true)
+                            : null;
+                        $ord['charge_formatted'] = $chargeDisplayEq ? ($chargeDisplayEq . ' (Orig: ' . $chargeFormatted . ')') : $chargeFormatted;
+                        $ord['unit_formatted'] = $unitDisplayEq ? ($unitDisplayEq . ' (Orig: ' . $unitFormatted . ')') : $unitFormatted;
                     ?>
                     <tr class="hover:bg-purple-50/40">
                         <td class="py-3.5 pr-3 font-bold text-slate-800">#<?= (int)$ord['id'] ?></td>
@@ -87,13 +90,19 @@ $baseCode = Currency::getBaseCode();
                         <td class="py-3.5 pr-3 max-w-[160px] truncate text-xs text-purple-700 font-medium">
                             <?= Validator::e($ord['link']) ?>
                         </td>
-                        <td class="py-3.5 pr-3 font-bold text-slate-900 tabular-nums">
-                            <div><?= Validator::e($chargeFormatted) ?></div>
+                        <td class="py-3.5 pr-3 font-bold text-slate-900 tabular-nums whitespace-nowrap">
                             <?php if ($chargeDisplayEq): ?>
-                                <div class="text-[10px] font-semibold text-slate-400">&approx; <?= Validator::e($chargeDisplayEq) ?></div>
+                                <div><?= Validator::e($chargeDisplayEq) ?></div>
+                                <div class="text-[10px] font-semibold text-slate-400">Orig: <?= Validator::e($chargeFormatted) ?></div>
+                            <?php else: ?>
+                                <div><?= Validator::e($chargeFormatted) ?></div>
                             <?php endif; ?>
-                            <?php if (Currency::cmp((string)$ord['refunded_amount'], '0', 4) > 0): ?>
-                                <div class="text-[10px] text-emerald-600">Refunded: <?= Currency::formatRaw((string)$ord['refunded_amount'], $oCurr, 2, true) ?></div>
+                            <?php if (Currency::cmp((string)$ord['refunded_amount'], '0', 4) > 0):
+                                $refDisplay = ($displayCode !== $oCurr)
+                                    ? Currency::display(Currency::convert((string)$ord['refunded_amount'], $oCurr, $baseCode, 4), $displayCode, 2, true)
+                                    : Currency::formatRaw((string)$ord['refunded_amount'], $oCurr, 2, true);
+                            ?>
+                                <div class="text-[10px] text-emerald-600">Refunded: <?= Validator::e($refDisplay) ?></div>
                             <?php endif; ?>
                         </td>
                         <td class="py-3.5 pr-3 text-xs text-slate-600">
