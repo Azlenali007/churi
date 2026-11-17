@@ -8,6 +8,7 @@ require_once __DIR__ . '/../core/Database.php';
 require_once __DIR__ . '/../core/CSRF.php';
 require_once __DIR__ . '/../core/Validator.php';
 require_once __DIR__ . '/../core/Currency.php';
+require_once __DIR__ . '/../core/ExchangeRateService.php';
 require_once __DIR__ . '/../core/Logger.php';
 require_once __DIR__ . '/../core/Helpers.php';
 require_once __DIR__ . '/../core/Auth.php';
@@ -61,6 +62,10 @@ $GLOBALS['APP_CONFIG'] = $APP_CONFIG;
 
 try {
     Database::connect($APP_CONFIG['db']);
+    if (Helpers::setting('currency_schema_v2', '0') !== '1') {
+        Currency::ensureSchema();
+        Helpers::setSetting('currency_schema_v2', '1', 'currency');
+    }
 } catch (Throwable $e) {
     Logger::errorFile('Database connection error: ' . $e->getMessage());
     if (!$isInstaller) {

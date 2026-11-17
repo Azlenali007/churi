@@ -52,9 +52,9 @@ if ($activeSale):
             <?= Helpers::platformIcon((string)$sample['platform'], 'w-8 h-8') ?>
             <div>
                 <div class="text-[11px] text-purple-100 font-medium truncate max-w-[160px]"><?= Validator::e($sample['name']) ?></div>
-                <div class="flex items-baseline gap-2">
-                    <span class="text-xs line-through text-purple-200/80"><?= Currency::format((string)$activeSale['original_price']) ?></span>
-                    <span class="text-lg font-extrabold text-amber-300"><?= Currency::format((string)$activeSale['sale_price']) ?></span>
+                <div class="flex items-baseline gap-2 tabular-nums">
+                    <span class="text-xs line-through text-purple-200/80"><?= Currency::displayRate((string)$activeSale['original_price'], null, true) ?></span>
+                    <span class="text-lg font-extrabold text-amber-300"><?= Currency::displayRate((string)$activeSale['sale_price'], null, true) ?></span>
                     <span class="text-[10px] text-purple-200">/1k</span>
                 </div>
             </div>

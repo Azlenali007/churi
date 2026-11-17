@@ -107,19 +107,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($setBase) {
-            Database::execute("UPDATE currencies SET is_base = 0");
-            $rate = '1.000000';
-            $status = 'active';
-            Helpers::setSetting('base_currency', $code, 'currency');
-            Helpers::setSetting('currency_symbol', $symbol, 'currency');
+            ExchangeRateService::switchBaseCurrency($code, (int)$admin['id']);
+            Helpers::setFlash('success', "Currency {$code} set as platform base.");
+            Helpers::redirect('/admin/settings.php');
         }
 
         Database::execute(
-            "INSERT INTO currencies (code, name, symbol, exchange_rate, is_base, status)
-             VALUES (?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE name=VALUES(name), symbol=VALUES(symbol), exchange_rate=VALUES(exchange_rate), is_base=VALUES(is_base), status=VALUES(status)",
-            [$code, $name, $symbol, $rate, $setBase ? 1 : 0, $status]
+            "INSERT INTO currencies (code, name, symbol, exchange_rate, is_base, is_manual_override, rate_source, update_status, last_updated_at, status)
+             VALUES (?, ?, ?, ?, 0, 1, 'manual', 'manual', NOW(), ?)
+             ON DUPLICATE KEY UPDATE name=VALUES(name), symbol=VALUES(symbol), exchange_rate=VALUES(exchange_rate), is_manual_override=1, rate_source='manual', update_status='manual', last_updated_at=NOW(), status=VALUES(status)",
+            [$code, $name, $symbol, $rate, $status]
         );
+        Currency::clearCache();
         Logger::activity('admin', (int)$admin['id'], 'currency.save', 'currency', $code, "Saved currency {$code} ({$symbol})");
         Helpers::setFlash('success', "Currency {$code} saved.");
         Helpers::redirect('/admin/settings.php');
@@ -356,7 +355,13 @@ require __DIR__ . '/includes/header.php';
 
 <!-- Currencies -->
 <div class="smm-card rounded-3xl p-6">
-    <h2 class="text-base font-extrabold text-slate-900 mb-4">Currencies &amp; Exchange Rates</h2>
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+            <h2 class="text-base font-extrabold text-slate-900">Currencies &amp; Exchange Rates</h2>
+            <p class="text-xs text-slate-500">Use the dedicated Currencies Console for free live ECB/Frankfurter auto-updates, enable/disable toggles, and sync logs.</p>
+        </div>
+        <a href="/admin/currencies.php" class="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold shadow hover:bg-purple-700">Open Currency &amp; Auto-Rates Console &rarr;</a>
+    </div>
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div class="lg:col-span-2 overflow-x-auto">
             <table class="w-full text-left text-xs">

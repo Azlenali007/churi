@@ -22,19 +22,31 @@ $refunds = Database::fetchAll(
     "SELECT * FROM wallet_transactions WHERE user_id = ? AND type = 'refund' ORDER BY id DESC LIMIT 20",
     [$user['id']]
 );
-$currencySymbol = Helpers::setting('currency_symbol', '₹');
+$baseCode = Currency::getBaseCode();
+$displayCurr = Currency::getActiveDisplayCurrency($user);
+$displayCode = $displayCurr['code'];
+$currencySymbol = $displayCurr['symbol'];
+$defaultRzpDisp = Currency::convertFromBase('500', $displayCode, 2);
+$rzpMinDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['min_amount'], $displayCode, 2) : '0.00';
+$rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['max_amount'], $displayCode, 2) : '0.00';
 ?>
 
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
     <!-- Left Wallet & Deposit Form -->
     <div class="lg:col-span-5 space-y-6">
         <div class="smm-wallet-card rounded-3xl p-6 text-white">
-            <div class="text-xs font-semibold text-purple-100">Available Wallet Balance</div>
-            <div class="text-3xl font-extrabold mt-1"><?= Currency::format((string)$user['wallet_balance']) ?></div>
-            <div class="text-xs text-purple-200 mt-3">Total Lifetime Spent: <?= Currency::format((string)$user['total_spent']) ?></div>
+            <div class="flex items-center justify-between gap-2">
+                <div class="text-xs font-semibold text-purple-100">Available Wallet Balance</div>
+                <span class="px-2.5 py-0.5 rounded-full bg-white/15 text-[11px] font-bold"><?= Validator::e($displayCode) ?></span>
+            </div>
+            <div class="text-3xl font-extrabold mt-1 tabular-nums"><?= Currency::display((string)$user['wallet_balance'], $displayCode, 2, true) ?></div>
+            <?php if ($displayCode !== $baseCode): ?>
+                <div class="text-[11px] text-purple-100/80 mt-1 tabular-nums">Wallet Ledger Base: <?= Currency::formatBase((string)$user['wallet_balance'], 2, true) ?></div>
+            <?php endif; ?>
+            <div class="text-xs text-purple-200 mt-3 tabular-nums">Total Lifetime Spent: <?= Currency::display((string)$user['total_spent'], $displayCode, 2, true) ?></div>
         </div>
 
-        <div class="smm-card rounded-3xl p-6" x-data="{ tab: '<?= $rzpCfg ? 'razorpay' : 'manual' ?>', rzpAmount: '500', rzpBusy: false }">
+        <div class="smm-card rounded-3xl p-6" x-data="{ tab: '<?= $rzpCfg ? 'razorpay' : 'manual' ?>', rzpAmount: '<?= Validator::e($defaultRzpDisp) ?>', rzpBusy: false }">
             <h2 class="text-lg font-extrabold text-slate-900 mb-4">Add Funds</h2>
 
             <div class="flex gap-2 mb-5 bg-[#F3F1FC] p-1 rounded-xl text-xs font-bold">
@@ -50,26 +62,32 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                     </div>
                 <?php else: ?>
                     <div>
-                        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Amount (<?= Validator::e($currencySymbol) ?>)</label>
-                        <input type="number" step="0.01" min="<?= Validator::e((string)$rzpCfg['gateway']['min_amount']) ?>" max="<?= Validator::e((string)$rzpCfg['gateway']['max_amount']) ?>"
-                               x-model="rzpAmount" class="w-full px-4 py-2.5 rounded-xl border border-purple-200 focus:border-purple-600 outline-none text-sm font-bold">
-                        <div class="text-[11px] text-slate-500 mt-1">
-                            Limits: <?= Currency::format((string)$rzpCfg['gateway']['min_amount']) ?> – <?= Currency::format((string)$rzpCfg['gateway']['max_amount']) ?>
+                        <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Amount (<?= Validator::e($currencySymbol . ' ' . $displayCode) ?>)</label>
+                        <input type="number" step="0.01" min="<?= Validator::e($rzpMinDisp) ?>" max="<?= Validator::e($rzpMaxDisp) ?>"
+                               x-model="rzpAmount" class="w-full px-4 py-2.5 rounded-xl border border-purple-200 focus:border-purple-600 outline-none text-sm font-bold tabular-nums">
+                        <div class="text-[11px] text-slate-500 mt-1 tabular-nums">
+                            Limits: <?= Currency::display((string)$rzpCfg['gateway']['min_amount'], $displayCode, 2, true) ?> – <?= Currency::display((string)$rzpCfg['gateway']['max_amount'], $displayCode, 2, true) ?>
                         </div>
+                        <?php if ($displayCode !== $baseCode): ?>
+                        <div class="text-[11px] text-purple-700 mt-1">
+                            Converted automatically to <?= Validator::e($baseCode) ?> for Razorpay checkout &amp; wallet credit.
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <button type="button" :disabled="rzpBusy"
-                            @click="startRazorpay(rzpAmount, '<?= Validator::e(CSRF::token()) ?>', () => rzpBusy = true, () => rzpBusy = false)"
+                            @click="startRazorpay(rzpAmount, '<?= Validator::e(CSRF::token()) ?>', '<?= Validator::e($displayCode) ?>', () => rzpBusy = true, () => rzpBusy = false)"
                             class="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white font-bold text-sm shadow-lg shadow-purple-500/25">
                         <span x-text="rzpBusy ? 'Connecting to Razorpay...' : 'Pay Securely with Razorpay'"></span>
                     </button>
                     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
                     <script>
-                    async function startRazorpay(amount, csrf, onStart, onEnd) {
+                    async function startRazorpay(amount, csrf, displayCurrency, onStart, onEnd) {
                         onStart();
                         try {
                             const fd = new FormData();
                             fd.append('action', 'rzp_create');
                             fd.append('amount', amount);
+                            fd.append('display_currency', displayCurrency);
                             fd.append('_csrf_token', csrf);
                             const resp = await fetch('/api/ajax.php', { method: 'POST', body: fd });
                             const data = await resp.json();
@@ -125,9 +143,10 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                           x-data="{ gateways: <?= Validator::e(json_encode($manualGateways)) ?>, gid: <?= (int)$manualGateways[0]['id'] ?>, get active() { return this.gateways.find(g => Number(g.id) === Number(this.gid)); } }">
                         <?= CSRF::field() ?>
                         <input type="hidden" name="action" value="manual_deposit">
+                        <input type="hidden" name="display_currency" value="<?= Validator::e($displayCode) ?>">
                         <div>
                             <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Payment Method</label>
-                            <select name="gateway_id" x-model="gid" class="w-full px-3.5 py-2.5 rounded-xl border border-purple-200 text-sm font-semibold outline-none">
+                            <select name="gateway_id" x-model="gid" class="w-full px-3.5 py-2.5 rounded-xl border border-purple-200 text-sm font-semibold outline-none bg-white">
                                 <?php foreach ($manualGateways as $mg): ?>
                                     <option value="<?= (int)$mg['id'] ?>"><?= Validator::e($mg['name']) ?></option>
                                 <?php endforeach; ?>
@@ -140,8 +159,13 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                         </div>
 
                         <div>
-                            <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Amount Sent (<?= Validator::e($currencySymbol) ?>)</label>
-                            <input type="number" step="0.01" name="amount" required class="w-full px-3.5 py-2.5 rounded-xl border border-purple-200 text-sm font-bold outline-none">
+                            <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Amount Sent (<?= Validator::e($currencySymbol . ' ' . $displayCode) ?>)</label>
+                            <input type="number" step="0.01" min="0.01" name="amount" required class="w-full px-3.5 py-2.5 rounded-xl border border-purple-200 text-sm font-bold outline-none tabular-nums">
+                            <?php if ($displayCode !== $baseCode): ?>
+                            <div class="text-[11px] text-slate-500 mt-1">
+                                Converted from <?= Validator::e($displayCode) ?> to <?= Validator::e($baseCode) ?> once upon submission.
+                            </div>
+                            <?php endif; ?>
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-600 uppercase mb-1">UTR / Transaction Reference ID</label>
@@ -155,7 +179,7 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                             <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Notes</label>
                             <input type="text" name="payer_note" placeholder="Sender name or UPI ID" class="w-full px-3.5 py-2.5 rounded-xl border border-purple-200 text-sm outline-none">
                         </div>
-                        <button type="submit" class="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-md">Submit Payment Request</button>
+                        <button type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white font-bold text-sm shadow-md">Submit Payment Request</button>
                     </form>
                 <?php endif; ?>
             </div>
@@ -189,11 +213,18 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
-                        <?php foreach ($payments as $pay): ?>
+                        <?php foreach ($payments as $pay):
+                            $payCurr = strtoupper((string)($pay['currency'] ?? $baseCode));
+                        ?>
                         <tr>
                             <td class="py-3 pr-3 font-bold text-slate-800"><?= Validator::e($pay['transaction_ref']) ?></td>
                             <td class="py-3 pr-3 text-slate-600"><?= Validator::e($pay['gateway_name']) ?></td>
-                            <td class="py-3 pr-3 font-bold text-purple-700"><?= Currency::format((string)$pay['amount']) ?></td>
+                            <td class="py-3 pr-3 font-bold text-purple-700 tabular-nums">
+                                <?= Currency::formatRaw((string)$pay['amount'], $payCurr, 2, true) ?>
+                                <?php if ($displayCode !== $payCurr): ?>
+                                    <div class="text-[10px] font-medium text-slate-400">&approx; <?= Currency::display(Currency::convertToBase((string)$pay['amount'], $payCurr, 4), $displayCode, 2, true) ?></div>
+                                <?php endif; ?>
+                            </td>
                             <td class="py-3 pr-3"><?= Helpers::statusBadge((string)$pay['status']) ?></td>
                             <td class="py-3 text-right text-slate-500"><?= date('M j, H:i', strtotime($pay['created_at'])) ?></td>
                         </tr>
@@ -221,12 +252,18 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                     <tbody class="divide-y divide-slate-100">
                         <?php foreach ($transactions as $tx):
                             $isCredit = in_array($tx['type'], ['credit','refund','referral_bonus','admin_add','payment'], true);
+                            $txCurr = strtoupper((string)($tx['currency_code'] ?? $baseCode));
                         ?>
                         <tr>
                             <td class="py-3 pr-3 font-semibold uppercase text-slate-600"><?= Validator::e($tx['type']) ?></td>
                             <td class="py-3 pr-3 text-slate-700"><?= Validator::e($tx['description']) ?></td>
-                            <td class="py-3 pr-3 font-bold <?= $isCredit ? 'text-emerald-600' : 'text-rose-600' ?>"><?= $isCredit ? '+' : '-' ?><?= Currency::format((string)$tx['amount']) ?></td>
-                            <td class="py-3 pr-3 font-semibold text-slate-800"><?= Currency::format((string)$tx['balance_after']) ?></td>
+                            <td class="py-3 pr-3 font-bold tabular-nums <?= $isCredit ? 'text-emerald-600' : 'text-rose-600' ?>">
+                                <?= $isCredit ? '+' : '-' ?><?= Currency::formatRaw((string)$tx['amount'], $txCurr, 2, true) ?>
+                                <?php if ($displayCode !== $txCurr): ?>
+                                    <div class="text-[10px] font-medium text-slate-400">&approx; <?= Currency::display(Currency::convertToBase((string)$tx['amount'], $txCurr, 4), $displayCode, 2, true) ?></div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="py-3 pr-3 font-semibold text-slate-800 tabular-nums"><?= Currency::formatRaw((string)$tx['balance_after'], $txCurr, 2, true) ?></td>
                             <td class="py-3 text-right text-slate-400"><?= date('M j, H:i', strtotime($tx['created_at'])) ?></td>
                         </tr>
                         <?php endforeach; ?>
@@ -249,10 +286,12 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
-                        <?php foreach ($refunds as $rf): ?>
+                        <?php foreach ($refunds as $rf):
+                            $rfCurr = strtoupper((string)($rf['currency_code'] ?? $baseCode));
+                        ?>
                         <tr>
                             <td class="py-3 pr-3 text-slate-700"><?= Validator::e($rf['description']) ?></td>
-                            <td class="py-3 pr-3 font-bold text-emerald-600">+<?= Currency::format((string)$rf['amount']) ?></td>
+                            <td class="py-3 pr-3 font-bold text-emerald-600 tabular-nums">+<?= Currency::formatRaw((string)$rf['amount'], $rfCurr, 2, true) ?></td>
                             <td class="py-3 text-right text-slate-400"><?= date('M j, H:i', strtotime($rf['created_at'])) ?></td>
                         </tr>
                         <?php endforeach; ?>

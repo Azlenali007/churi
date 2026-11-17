@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS `currencies` (
   `symbol` VARCHAR(10) NOT NULL,
   `exchange_rate` DECIMAL(16,6) NOT NULL DEFAULT 1.000000,
   `is_base` TINYINT(1) NOT NULL DEFAULT 0,
+  `is_manual_override` TINYINT(1) NOT NULL DEFAULT 0,
+  `rate_source` VARCHAR(60) NOT NULL DEFAULT 'manual',
+  `update_status` ENUM('ok','failed','manual','fallback') NOT NULL DEFAULT 'manual',
+  `last_error` VARCHAR(255) NULL,
+  `last_updated_at` DATETIME NULL,
   `status` ENUM('active','inactive') NOT NULL DEFAULT 'active',
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -87,6 +92,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `two_factor_secret` VARCHAR(64) NULL,
   `notification_prefs_json` TEXT NULL,
   `custom_rate_discount` DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+  `preferred_currency` VARCHAR(10) NULL DEFAULT NULL,
   `status` ENUM('active','suspended','pending') NOT NULL DEFAULT 'active',
   `admin_notes` TEXT NULL,
   `last_login_at` DATETIME NULL,
@@ -153,6 +159,7 @@ CREATE TABLE IF NOT EXISTS `providers` (
   `api_key_enc` TEXT NOT NULL,
   `currency_code` VARCHAR(10) NOT NULL DEFAULT 'USD',
   `exchange_rate` DECIMAL(16,6) NOT NULL DEFAULT 1.000000,
+  `rate_mode` ENUM('auto','manual') NOT NULL DEFAULT 'auto',
   `default_profit_margin` DECIMAL(8,2) NOT NULL DEFAULT 30.00,
   `balance` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
   `last_balance_check` DATETIME NULL,
@@ -178,6 +185,7 @@ CREATE TABLE IF NOT EXISTS `services` (
   `platform` VARCHAR(60) NOT NULL DEFAULT 'general',
   `icon_key` VARCHAR(60) NOT NULL DEFAULT 'general',
   `provider_rate` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
+  `provider_currency` VARCHAR(10) NULL DEFAULT NULL,
   `rate` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
   `min_qty` INT UNSIGNED NOT NULL DEFAULT 10,
   `max_qty` INT UNSIGNED NOT NULL DEFAULT 10000,
@@ -344,6 +352,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `unit_price` DECIMAL(16,4) NOT NULL,
   `original_unit_price` DECIMAL(16,4) NOT NULL,
   `charge` DECIMAL(16,4) NOT NULL,
+  `currency_code` VARCHAR(10) NOT NULL DEFAULT 'INR',
   `provider_cost` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
   `profit` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
   `refunded_amount` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
@@ -392,6 +401,7 @@ CREATE TABLE IF NOT EXISTS `wallet_transactions` (
   `child_panel_id` INT UNSIGNED NULL,
   `type` ENUM('credit','debit','refund','referral_bonus','admin_add','admin_deduct','payment') NOT NULL,
   `amount` DECIMAL(16,4) NOT NULL,
+  `currency_code` VARCHAR(10) NOT NULL DEFAULT 'INR',
   `balance_before` DECIMAL(16,4) NOT NULL,
   `balance_after` DECIMAL(16,4) NOT NULL,
   `reference_type` VARCHAR(40) NULL,
@@ -602,14 +612,30 @@ CREATE TABLE IF NOT EXISTS `api_logs` (
   KEY `idx_api_log_user` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `exchange_rate_logs` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `base_currency` VARCHAR(10) NOT NULL,
+  `provider_source` VARCHAR(60) NOT NULL,
+  `rates_json` TEXT NULL,
+  `status` ENUM('success','failed') NOT NULL DEFAULT 'success',
+  `error_message` VARCHAR(255) NULL,
+  `triggered_by` ENUM('manual','cron','fallback') NOT NULL DEFAULT 'manual',
+  `admin_id` INT UNSIGNED NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_erl_created` (`created_at`),
+  KEY `idx_erl_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ============================================================================
 -- ESSENTIAL SYSTEM CONFIGURATION & INITIAL STRUCTURAL DEFAULTS (NO FAKE DATA)
 -- ============================================================================
 
-INSERT IGNORE INTO `currencies` (`code`, `name`, `symbol`, `exchange_rate`, `is_base`, `status`) VALUES
-('INR', 'Indian Rupee', '₹', 1.000000, 1, 'active'),
-('USD', 'US Dollar', '$', 0.012000, 0, 'active'),
-('EUR', 'Euro', '€', 0.011000, 0, 'active');
+INSERT IGNORE INTO `currencies` (`code`, `name`, `symbol`, `exchange_rate`, `is_base`, `is_manual_override`, `rate_source`, `update_status`, `status`) VALUES
+('INR', 'Indian Rupee', '₹', 1.000000, 1, 0, 'base', 'ok', 'active'),
+('USD', 'US Dollar', '$', 0.011900, 0, 0, 'initial_seed', 'manual', 'active'),
+('EUR', 'Euro', '€', 0.011000, 0, 0, 'initial_seed', 'manual', 'active'),
+('GBP', 'British Pound', '£', 0.009400, 0, 0, 'initial_seed', 'manual', 'active');
 
 INSERT IGNORE INTO `roles` (`id`, `name`, `slug`, `description`, `permissions_json`, `is_system`) VALUES
 (1, 'Super Admin', 'super_admin', 'Unrestricted full access to all administrative modules', '["*"]', 1),
@@ -623,6 +649,13 @@ INSERT IGNORE INTO `settings` (`setting_key`, `setting_value`, `setting_group`) 
 ('site_favicon', '', 'general'),
 ('base_currency', 'INR', 'currency'),
 ('currency_symbol', '₹', 'currency'),
+('exchange_rate_auto_update', '1', 'currency'),
+('exchange_rate_interval_hours', '12', 'currency'),
+('exchange_rate_last_attempt_at', '', 'currency'),
+('exchange_rate_last_success_at', '', 'currency'),
+('exchange_rate_last_status', 'never', 'currency'),
+('exchange_rate_last_error', '', 'currency'),
+('exchange_rate_provider', 'frankfurter', 'currency'),
 ('default_profit_margin', '30.00', 'pricing'),
 ('timezone', 'Asia/Kolkata', 'general'),
 ('maintenance_mode', '0', 'system'),

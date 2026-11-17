@@ -6,7 +6,10 @@
         <h1 class="text-base sm:text-lg font-extrabold text-slate-900"><?= Validator::e($pageTitle ?? 'Admin Dashboard') ?></h1>
     </div>
 
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-3">
+        <a href="/admin/currencies.php" class="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold hover:bg-purple-100">
+            <span>Base: <?= Validator::e(Currency::getSymbol(Currency::getBaseCode()) . ' ' . Currency::getBaseCode()) ?></span>
+        </a>
         <span class="hidden sm:inline-flex px-3 py-1 rounded-full bg-purple-100 text-purple-800 text-xs font-bold">
             <?= Validator::e($admin['role_name']) ?>
         </span>

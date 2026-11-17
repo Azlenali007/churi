@@ -108,3 +108,30 @@ window.copyText = function (text, label = 'Copied to clipboard') {
     window.showToast(label, 'success');
   }
 };
+
+window.smmSwitchCurrency = function (code) {
+  const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  const csrf = csrfMeta ? csrfMeta.getAttribute('content') : '';
+  const body = new URLSearchParams({
+    action: 'set_currency',
+    currency: code,
+    _csrf_token: csrf,
+  });
+
+  return fetch('/api/ajax.php', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  })
+    .then((r) => r.json())
+    .then((res) => {
+      if (res && res.ok) {
+        window.location.reload();
+      } else {
+        window.showToast((res && res.error) || 'Could not change display currency.', 'error');
+      }
+    })
+    .catch(() => {
+      window.showToast('Network error while updating display currency.', 'error');
+    });
+};

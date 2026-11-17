@@ -43,7 +43,9 @@ class CategoryMapper
         $margin = $overrideMargin !== null
             ? Currency::normalize($overrideMargin, 2)
             : Currency::normalize((string)$provider['default_profit_margin'], 2);
-        $exchangeRate = Currency::normalize((string)$provider['exchange_rate'], 6);
+        $providerCurrency = strtoupper(trim((string)($provider['currency_code'] ?: Currency::getBaseCode())));
+        $rateMode = (string)($provider['rate_mode'] ?? 'auto');
+        $manualExchangeRate = Currency::normalize((string)($provider['exchange_rate'] ?? '1'), 6);
         $providerId = (int)$provider['id'];
 
         $stats = [
@@ -93,7 +95,14 @@ class CategoryMapper
             }
 
             $providerRate = Currency::normalize((string)($item['rate'] ?? '0'), 4);
-            $sellingRate = Currency::calculateSellingRate($providerRate, $exchangeRate, $margin);
+            $calc = Currency::calculateProviderToBase(
+                $providerRate,
+                $providerCurrency,
+                $margin,
+                $rateMode,
+                $manualExchangeRate
+            );
+            $sellingRate = $calc['selling_rate_base'];
             $minQty = max(1, (int)($item['min'] ?? 10));
             $maxQty = max($minQty, (int)($item['max'] ?? 10000));
             $description = Validator::str((string)($item['desc'] ?? ($item['description'] ?? '')), 5000);
@@ -127,38 +136,38 @@ class CategoryMapper
                     continue;
                 }
 
-                // Update mode: updates category, rate, and metadata
+                // Update mode: updates category, rate, provider_currency, and metadata
                 $serviceId = (int)$existingMap['service_id'];
                 Database::execute(
                     "UPDATE services
                      SET category_id = ?, provider_category_raw = ?, name = ?, description = ?,
-                         type = ?, platform = ?, icon_key = ?, provider_rate = ?, rate = ?,
+                         type = ?, platform = ?, icon_key = ?, provider_rate = ?, provider_currency = ?, rate = ?,
                          min_qty = ?, max_qty = ?, drip_feed_support = ?, refill_support = ?,
                          cancel_support = ?, avg_time = COALESCE(NULLIF(?, ''), avg_time)
                      WHERE id = ?",
                     [
                         $categoryId, $rawCat !== '' ? $rawCat : null, $name, $description,
-                        $type, $platform, $platform, $providerRate, $sellingRate,
+                        $type, $platform, $platform, $providerRate, $providerCurrency, $sellingRate,
                         $minQty, $maxQty, $dripfeed, $refill, $cancel, $avgTime, $serviceId
                     ]
                 );
-                self::upsertMapping($providerId, $serviceId, $extId, $rawCat, $providerRate, (string)$provider['currency_code']);
+                self::upsertMapping($providerId, $serviceId, $extId, $rawCat, $providerRate, $providerCurrency);
                 $stats['updated']++;
             } else {
                 $serviceId = Database::insert(
                     "INSERT INTO services
                      (category_id, provider_id, provider_service_id, provider_category_raw, name, description,
-                      type, platform, icon_key, provider_rate, rate, min_qty, max_qty,
+                      type, platform, icon_key, provider_rate, provider_currency, rate, min_qty, max_qty,
                       drip_feed_support, refill_support, cancel_support, avg_time, status)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')",
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')",
                     [
                         $categoryId, $providerId, $extId, $rawCat !== '' ? $rawCat : null,
                         $name, $description, $type, $platform, $platform,
-                        $providerRate, $sellingRate, $minQty, $maxQty,
+                        $providerRate, $providerCurrency, $sellingRate, $minQty, $maxQty,
                         $dripfeed, $refill, $cancel, $avgTime ?: null
                     ]
                 );
-                self::upsertMapping($providerId, $serviceId, $extId, $rawCat, $providerRate, (string)$provider['currency_code']);
+                self::upsertMapping($providerId, $serviceId, $extId, $rawCat, $providerRate, $providerCurrency);
                 $stats['imported']++;
             }
         }

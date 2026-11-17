@@ -44,10 +44,11 @@ class Wallet
 
             Database::execute("UPDATE users SET wallet_balance = ? WHERE id = ?", [$after, $userId]);
 
+            $baseCode = Currency::getBaseCode();
             $txId = Database::insert(
-                "INSERT INTO wallet_transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, idempotency_key, description)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [$userId, $type, $amount, $before, $after, $referenceType, $referenceId, $idempotencyKey, substr($description, 0, 255)]
+                "INSERT INTO wallet_transactions (user_id, type, amount, currency_code, balance_before, balance_after, reference_type, reference_id, idempotency_key, description)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [$userId, $type, $amount, $baseCode, $before, $after, $referenceType, $referenceId, $idempotencyKey, substr($description, 0, 255)]
             );
 
             // Process referral bonus if this is a verified payment and user was referred
@@ -117,10 +118,11 @@ class Wallet
                 [$after, $newSpent, $userId]
             );
 
+            $baseCode = Currency::getBaseCode();
             $txId = Database::insert(
-                "INSERT INTO wallet_transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, idempotency_key, description)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [$userId, $type, $amount, $before, $after, $referenceType, $referenceId, $idempotencyKey, substr($description, 0, 255)]
+                "INSERT INTO wallet_transactions (user_id, type, amount, currency_code, balance_before, balance_after, reference_type, reference_id, idempotency_key, description)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [$userId, $type, $amount, $baseCode, $before, $after, $referenceType, $referenceId, $idempotencyKey, substr($description, 0, 255)]
             );
 
             if ($ownTx) {

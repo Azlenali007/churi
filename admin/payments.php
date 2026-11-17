@@ -140,7 +140,7 @@ require __DIR__ . '/includes/header.php';
                     <td class="py-3 pr-3"><div class="font-bold">#<?= (int)$p['id'] ?></div><div class="text-slate-500"><?= Validator::e($p['transaction_ref']) ?></div></td>
                     <td class="py-3 pr-3 font-bold">@<?= Validator::e($p['username']) ?></td>
                     <td class="py-3 pr-3"><?= Validator::e($p['gateway_name']) ?></td>
-                    <td class="py-3 pr-3 font-bold text-purple-700"><?= Currency::format((string)$p['amount']) ?></td>
+                    <td class="py-3 pr-3 font-bold text-purple-700 tabular-nums"><?= Currency::formatRaw((string)$p['amount'], (string)($p['currency'] ?: Currency::getBaseCode()), 2, true) ?></td>
                     <td class="py-3 pr-3">
                         <?php if ($p['proof_path']): ?><a href="<?= Validator::e($p['proof_path']) ?>" target="_blank" class="text-purple-600 underline font-bold">View Proof</a><?php else: ?>-<?php endif; ?>
                     </td>

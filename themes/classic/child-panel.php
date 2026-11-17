@@ -52,6 +52,9 @@ if ($activePanel) {
     );
 }
 $panelSetupFee = Helpers::setting('child_panel_price', '999.00');
+$baseCode = Currency::getBaseCode();
+$displayCurr = Currency::getActiveDisplayCurrency($user);
+$displayCode = $displayCurr['code'];
 ?>
 
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -96,7 +99,7 @@ $panelSetupFee = Helpers::setting('child_panel_price', '999.00');
                         <input type="number" step="0.5" min="0" max="500" name="profit_margin" value="25" required class="w-full px-3.5 py-2 rounded-xl border border-purple-200 text-xs outline-none">
                     </div>
                     <div class="p-3 rounded-xl bg-purple-50 text-xs text-purple-900">
-                        Setup Fee: <strong><?= Currency::format($panelSetupFee) ?></strong> (deducted from wallet if &gt; 0)
+                        Setup Fee: <strong class="tabular-nums"><?= Currency::display($panelSetupFee, $displayCode, 2, true) ?></strong> (deducted from wallet if &gt; 0)
                     </div>
                     <button type="submit" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow">
                         Create Child Panel
@@ -152,7 +155,7 @@ $panelSetupFee = Helpers::setting('child_panel_price', '999.00');
                         </div>
                         <div class="p-4 rounded-2xl bg-[#F6F4FC]">
                             <div class="text-xs text-slate-500">Panel Revenue</div>
-                            <div class="text-2xl font-extrabold text-purple-700"><?= Currency::format((string)$panelStats['revenue']) ?></div>
+                            <div class="text-2xl font-extrabold text-purple-700 tabular-nums"><?= Currency::display((string)$panelStats['revenue'], $displayCode, 2, true) ?></div>
                         </div>
                     </div>
 
@@ -185,15 +188,15 @@ $panelSetupFee = Helpers::setting('child_panel_price', '999.00');
                         <input type="hidden" name="panel_id" value="<?= (int)$activePanel['id'] ?>">
                         <div class="sm:col-span-2">
                             <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Parent Service</label>
-                            <select name="parent_service_id" class="w-full px-3 py-2 rounded-xl border border-purple-200 text-xs">
+                            <select name="parent_service_id" class="w-full px-3 py-2 rounded-xl border border-purple-200 text-xs bg-white">
                                 <?php foreach ($allParentServices as $ps): ?>
-                                    <option value="<?= (int)$ps['id'] ?>">#<?= (int)$ps['id'] ?> <?= Validator::e($ps['name']) ?> (Base: <?= Currency::format((string)$ps['rate']) ?>)</option>
+                                    <option value="<?= (int)$ps['id'] ?>">#<?= (int)$ps['id'] ?> <?= Validator::e($ps['name']) ?> (Base: <?= Currency::displayRate((string)$ps['rate'], $displayCode, true) ?>)</option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Custom Rate / 1k</label>
-                            <input type="number" step="0.01" name="custom_rate" required placeholder="Auto or custom" class="w-full px-3 py-2 rounded-xl border border-purple-200 text-xs">
+                            <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Custom Rate / 1k (<?= Validator::e($displayCode) ?>)</label>
+                            <input type="number" step="0.0001" min="0.0001" name="custom_rate" required placeholder="Auto or custom" class="w-full px-3 py-2 rounded-xl border border-purple-200 text-xs tabular-nums">
                         </div>
                         <button type="submit" class="py-2 px-4 rounded-xl bg-purple-600 text-white text-xs font-bold">Add / Update</button>
                     </form>
@@ -205,8 +208,8 @@ $panelSetupFee = Helpers::setting('child_panel_price', '999.00');
                                 <?php foreach ($panelServices as $cps): ?>
                                 <tr>
                                     <td class="py-2.5 font-semibold text-slate-800"><?= Validator::e($cps['custom_name'] ?: $cps['parent_name']) ?></td>
-                                    <td class="py-2.5 text-slate-500"><?= Currency::format((string)$cps['parent_rate']) ?></td>
-                                    <td class="py-2.5 font-bold text-purple-700"><?= Currency::format((string)$cps['custom_rate']) ?></td>
+                                    <td class="py-2.5 text-slate-500 tabular-nums"><?= Currency::displayRate((string)$cps['parent_rate'], $displayCode, true) ?></td>
+                                    <td class="py-2.5 font-bold text-purple-700 tabular-nums"><?= Currency::displayRate((string)$cps['custom_rate'], $displayCode, true) ?></td>
                                     <td class="py-2.5 text-right"><?= Helpers::statusBadge((string)$cps['status']) ?></td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -230,7 +233,7 @@ $panelSetupFee = Helpers::setting('child_panel_price', '999.00');
                                 <tr>
                                     <td class="py-2.5 font-bold"><?= Validator::e($cu['username']) ?></td>
                                     <td class="py-2.5 text-slate-600"><?= Validator::e($cu['email']) ?></td>
-                                    <td class="py-2.5 font-bold text-purple-700"><?= Currency::format((string)$cu['wallet_balance']) ?></td>
+                                    <td class="py-2.5 font-bold text-purple-700 tabular-nums"><?= Currency::display((string)$cu['wallet_balance'], $displayCode, 2, true) ?></td>
                                     <td class="py-2.5 text-right"><?= Helpers::statusBadge((string)$cu['status']) ?></td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -247,12 +250,14 @@ $panelSetupFee = Helpers::setting('child_panel_price', '999.00');
                         <table class="w-full text-left text-xs">
                             <thead><tr class="border-b border-purple-100 uppercase text-slate-400"><th class="py-2">ID</th><th class="py-2">Service</th><th class="py-2">Qty</th><th class="py-2">Charge</th><th class="py-2 text-right">Status</th></tr></thead>
                             <tbody class="divide-y divide-slate-100">
-                                <?php foreach ($panelOrders as $co): ?>
+                                <?php foreach ($panelOrders as $co):
+                                    $coCurr = strtoupper((string)($co['currency_code'] ?: $baseCode));
+                                ?>
                                 <tr>
                                     <td class="py-2.5 font-bold">#<?= (int)$co['id'] ?></td>
                                     <td class="py-2.5"><?= Validator::e($co['service_name']) ?></td>
                                     <td class="py-2.5"><?= number_format((int)$co['quantity']) ?></td>
-                                    <td class="py-2.5 font-bold"><?= Currency::format((string)$co['charge']) ?></td>
+                                    <td class="py-2.5 font-bold tabular-nums"><?= Currency::formatRaw((string)$co['charge'], $coCurr, 2, true) ?></td>
                                     <td class="py-2.5 text-right"><?= Helpers::statusBadge((string)$co['status']) ?></td>
                                 </tr>
                                 <?php endforeach; ?>

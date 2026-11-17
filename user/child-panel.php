@@ -83,7 +83,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'add_service') {
         $parentSvcId = (int)($_POST['parent_service_id'] ?? 0);
-        $customRate = Currency::normalize((string)($_POST['custom_rate'] ?? '0'), 4);
+        $rawCustomRate = Currency::normalize((string)($_POST['custom_rate'] ?? '0'), 4);
+        $dispCode = Currency::getActiveDisplayCode($user);
+        $customRate = ($dispCode !== Currency::getBaseCode())
+            ? Currency::convertToBase($rawCustomRate, $dispCode, 4)
+            : $rawCustomRate;
         $ps = Database::fetch("SELECT * FROM services WHERE id = ? AND status = 'active' LIMIT 1", [$parentSvcId]);
         if ($ps && Currency::cmp($customRate, '0', 4) > 0) {
             Database::execute(

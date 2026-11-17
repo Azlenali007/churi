@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'mass_order_batch' => $batchId,
         ]);
         if ($res['ok']) {
-            $massResults[] = ['line' => $lineNum, 'ok' => true, 'message' => 'Order #' . $res['order_id'] . ' placed (' . Currency::format($res['charge']) . ')'];
+            $massResults[] = ['line' => $lineNum, 'ok' => true, 'message' => 'Order #' . $res['order_id'] . ' placed (' . Currency::display($res['charge'], null, 2, true) . ')'];
         } else {
             $massResults[] = ['line' => $lineNum, 'ok' => false, 'message' => $res['error'] ?? 'Failed'];
         }

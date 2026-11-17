@@ -46,7 +46,7 @@ $refHistory = Database::fetchAll(
         </div>
         <div class="smm-card rounded-3xl p-6">
             <div class="text-xs text-slate-500 font-semibold">Total Referral Earnings</div>
-            <div class="text-3xl font-extrabold text-emerald-600 mt-1"><?= Currency::format((string)$totalEarned) ?></div>
+            <div class="text-3xl font-extrabold text-emerald-600 mt-1 tabular-nums"><?= Currency::display((string)$totalEarned, null, 2, true) ?></div>
             <div class="text-xs text-slate-500 mt-2">Credited directly to your wallet</div>
         </div>
     </div>
@@ -84,7 +84,7 @@ $refHistory = Database::fetchAll(
                         <tr>
                             <td class="py-2.5 font-bold">@<?= Validator::e($r['username']) ?></td>
                             <td class="py-2.5"><?= Validator::e((string)$r['commission_rate']) ?>%</td>
-                            <td class="py-2.5 font-bold text-emerald-600"><?= Currency::format((string)$r['total_earned']) ?></td>
+                            <td class="py-2.5 font-bold text-emerald-600 tabular-nums"><?= Currency::display((string)$r['total_earned'], null, 2, true) ?></td>
                             <td class="py-2.5 text-right text-slate-500"><?= date('M j, Y', strtotime($r['joined_at'])) ?></td>
                         </tr>
                         <?php endforeach; ?>
@@ -104,8 +104,8 @@ $refHistory = Database::fetchAll(
                         <?php foreach ($refHistory as $rh): ?>
                         <tr>
                             <td class="py-2.5 font-bold">@<?= Validator::e($rh['username']) ?></td>
-                            <td class="py-2.5"><?= Currency::format((string)$rh['base_amount']) ?></td>
-                            <td class="py-2.5 font-bold text-emerald-600">+<?= Currency::format((string)$rh['commission_amount']) ?></td>
+                            <td class="py-2.5 tabular-nums"><?= Currency::display((string)$rh['base_amount'], null, 2, true) ?></td>
+                            <td class="py-2.5 font-bold text-emerald-600 tabular-nums">+<?= Currency::display((string)$rh['commission_amount'], null, 2, true) ?></td>
                             <td class="py-2.5 text-right text-slate-500"><?= date('M j, H:i', strtotime($rh['created_at'])) ?></td>
                         </tr>
                         <?php endforeach; ?>

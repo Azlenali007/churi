@@ -27,6 +27,10 @@ $userDiscount = (float)($user['custom_rate_discount'] ?? 0);
 $enrichedServices = [];
 $platformsPresent = [];
 
+$displayCurr = Currency::getActiveDisplayCurrency($user);
+$displayCode = $displayCurr['code'];
+$currencySymbol = $displayCurr['symbol'];
+
 foreach ($services as $svc) {
     $pricing = FlashSale::getServicePricing($svc);
     $effective = $pricing['effective_rate'];
@@ -42,8 +46,8 @@ foreach ($services as $svc) {
         'description'     => (string)$svc['description'],
         'platform'        => strtolower((string)$svc['platform']),
         'type'            => $svc['type'],
-        'original_rate'   => (string)$pricing['original_rate'],
-        'effective_rate'  => (string)$effective,
+        'original_rate'   => Currency::convertFromBase((string)$pricing['original_rate'], $displayCode, 4),
+        'effective_rate'  => Currency::convertFromBase((string)$effective, $displayCode, 4),
         'on_sale'         => $pricing['on_sale'],
         'discount_label'  => $pricing['discount_label'],
         'sale_title'      => $pricing['sale_title'],
@@ -57,7 +61,6 @@ foreach ($services as $svc) {
 }
 
 $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
-$currencySymbol = Helpers::setting('currency_symbol', '₹');
 ?>
 
 <?php require APP_ROOT . '/includes/flash_sale_banner.php'; ?>
@@ -115,6 +118,13 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
     },
     get currentService() {
         return this.services.find(s => s.id === Number(this.serviceId)) || null;
+    },
+    fmtRate(r) {
+        const n = Number(r || 0);
+        if (n > 0 && n < 1) {
+            return n.toFixed(4).replace(/0+$/, '').replace(/\.$/, '.00');
+        }
+        return n.toFixed(2);
     },
     get totalCharge() {
         const s = this.currentService;
@@ -213,7 +223,7 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                     <select name="service_id" x-model="serviceId" @change="if(currentService) quantity = currentService.min_qty" required
                             class="w-full px-4 py-2.5 rounded-xl border border-purple-200 focus:border-purple-600 outline-none text-sm font-semibold">
                         <template x-for="s in filteredServices" :key="s.id">
-                            <option :value="s.id" x-text="`#${s.id} — ${s.name} (<?= Validator::e($currencySymbol) ?>${Number(s.effective_rate).toFixed(2)}/1k)${s.on_sale ? ' 🔥 SALE' : ''}`"></option>
+                            <option :value="s.id" x-text="`#${s.id} — ${s.name} (<?= Validator::e($currencySymbol) ?>${fmtRate(s.effective_rate)} <?= Validator::e($displayCode) ?>/1k)${s.on_sale ? ' 🔥 SALE' : ''}`"></option>
                         </template>
                     </select>
                 </div>
@@ -270,7 +280,7 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                             Flash Sale Applied (<span x-text="currentService?.discount_label"></span>) — Verified Server-Side
                         </div>
                     </div>
-                    <div class="text-2xl font-extrabold text-purple-800"><?= Validator::e($currencySymbol) ?><span x-text="totalCharge">0.00</span></div>
+                    <div class="text-2xl font-extrabold text-purple-800 tabular-nums"><?= Validator::e($currencySymbol) ?><span x-text="totalCharge">0.00</span> <span class="text-xs font-bold text-purple-600"><?= Validator::e($displayCode) ?></span></div>
                 </div>
 
                 <button type="submit" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white font-bold text-sm shadow-lg shadow-purple-500/25 transition">
@@ -293,16 +303,17 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                 <div class="grid grid-cols-2 gap-3 mb-5">
                     <div class="p-3.5 rounded-2xl bg-[#F6F4FC]">
                         <div class="text-[11px] text-slate-500 font-semibold">Rate per 1,000</div>
-                        <div class="text-base font-extrabold text-purple-700 mt-0.5">
+                        <div class="text-base font-extrabold text-purple-700 mt-0.5 tabular-nums">
                             <template x-if="currentService?.on_sale">
                                 <span>
-                                    <span class="line-through text-xs text-slate-400 mr-1"><?= Validator::e($currencySymbol) ?><span x-text="Number(currentService.original_rate).toFixed(2)"></span></span>
-                                    <span class="text-rose-600"><?= Validator::e($currencySymbol) ?><span x-text="Number(currentService.effective_rate).toFixed(2)"></span></span>
+                                    <span class="line-through text-xs text-slate-400 mr-1"><?= Validator::e($currencySymbol) ?><span x-text="fmtRate(currentService.original_rate)"></span></span>
+                                    <span class="text-rose-600"><?= Validator::e($currencySymbol) ?><span x-text="fmtRate(currentService.effective_rate)"></span></span>
                                 </span>
                             </template>
                             <template x-if="!currentService?.on_sale">
-                                <span><?= Validator::e($currencySymbol) ?><span x-text="Number(currentService?.effective_rate || 0).toFixed(2)"></span></span>
+                                <span><?= Validator::e($currencySymbol) ?><span x-text="fmtRate(currentService?.effective_rate || 0)"></span></span>
                             </template>
+                            <span class="text-[11px] font-bold text-purple-500 ml-1"><?= Validator::e($displayCode) ?></span>
                         </div>
                     </div>
                     <div class="p-3.5 rounded-2xl bg-[#F6F4FC]">

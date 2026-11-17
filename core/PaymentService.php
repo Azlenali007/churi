@@ -35,7 +35,7 @@ class PaymentService
     /**
      * Creates a Razorpay Order server-side via cURL.
      */
-    public static function createRazorpayOrder(int $userId, string $amount): array
+    public static function createRazorpayOrder(int $userId, string $amount, ?string $inputCurrencyCode = null): array
     {
         $rzp = self::getRazorpayConfig();
         if (!$rzp) {
@@ -43,14 +43,19 @@ class PaymentService
         }
 
         $gw = $rzp['gateway'];
-        $amtNorm = Currency::normalize($amount, 2);
+        $baseCode = Currency::getBaseCode();
+        $inCode = $inputCurrencyCode ? strtoupper(trim($inputCurrencyCode)) : $baseCode;
+        $amtNorm = ($inCode !== $baseCode && Currency::getCurrency($inCode))
+            ? Currency::convertToBase($amount, $inCode, 2)
+            : Currency::normalize($amount, 2);
+
         if (Currency::cmp($amtNorm, (string)$gw['min_amount'], 2) < 0 || Currency::cmp($amtNorm, (string)$gw['max_amount'], 2) > 0) {
-            return ['ok' => false, 'error' => 'Amount is outside the allowed gateway limits.'];
+            return ['ok' => false, 'error' => 'Amount is outside the allowed gateway limits (' . Currency::display((string)$gw['min_amount'], $inCode) . ' - ' . Currency::display((string)$gw['max_amount'], $inCode) . ').'];
         }
 
         $paise = (int)Currency::mul($amtNorm, '100', 0);
         $txRef = 'RZP_' . date('YmdHis') . '_' . bin2hex(random_bytes(4));
-        $currency = Helpers::setting('base_currency', 'INR');
+        $currency = $baseCode;
 
         $ch = curl_init('https://api.razorpay.com/v1/orders');
         curl_setopt_array($ch, [
@@ -154,7 +159,7 @@ class PaymentService
                 "INSERT INTO notifications (user_id, type, title, message, link) VALUES (?, 'payment', ?, ?, ?)",
                 [
                     $payment['user_id'],
-                    'Funds Added: ' . Currency::format((string)$payment['net_amount']),
+                    'Funds Added: ' . Currency::formatBase((string)$payment['net_amount'], 2, true),
                     'Your Razorpay payment (' . $payment['transaction_ref'] . ') was verified and credited.',
                     '/user/add-funds.php',
                 ]
@@ -169,16 +174,21 @@ class PaymentService
         }
     }
 
-    public static function submitManualPayment(int $userId, int $gatewayId, string $amount, string $txRef, ?string $payerNote, ?string $proofPath): array
+    public static function submitManualPayment(int $userId, int $gatewayId, string $amount, string $txRef, ?string $payerNote, ?string $proofPath, ?string $inputCurrencyCode = null): array
     {
         $gw = Database::fetch("SELECT * FROM payment_gateways WHERE id = ? AND status = 'active' AND type = 'manual' LIMIT 1", [$gatewayId]);
         if (!$gw) {
             return ['ok' => false, 'error' => 'Selected manual payment method is inactive.'];
         }
 
-        $amtNorm = Currency::normalize($amount, 4);
+        $baseCode = Currency::getBaseCode();
+        $inCode = $inputCurrencyCode ? strtoupper(trim($inputCurrencyCode)) : $baseCode;
+        $amtNorm = ($inCode !== $baseCode && Currency::getCurrency($inCode))
+            ? Currency::convertToBase($amount, $inCode, 4)
+            : Currency::normalize($amount, 4);
+
         if (Currency::cmp($amtNorm, (string)$gw['min_amount'], 4) < 0 || Currency::cmp($amtNorm, (string)$gw['max_amount'], 4) > 0) {
-            return ['ok' => false, 'error' => 'Deposit amount is outside allowed gateway limits.'];
+            return ['ok' => false, 'error' => 'Deposit amount is outside allowed gateway limits (' . Currency::display((string)$gw['min_amount'], $inCode) . ' - ' . Currency::display((string)$gw['max_amount'], $inCode) . ').'];
         }
 
         $txClean = Validator::str($txRef, 110);
@@ -192,7 +202,7 @@ class PaymentService
 
         $fee = Currency::mul($amtNorm, Currency::div((string)$gw['fee_percent'], '100', 6), 4);
         $net = Currency::sub($amtNorm, $fee, 4);
-        $currency = Helpers::setting('base_currency', 'INR');
+        $currency = $baseCode;
 
         $pid = Database::insert(
             "INSERT INTO payments (user_id, gateway_id, gateway_code, transaction_ref, amount, fee, net_amount, currency, proof_path, payer_note, status)
@@ -200,7 +210,7 @@ class PaymentService
             [$userId, $gw['id'], $gw['code'], $txClean, $amtNorm, $fee, $net, $currency, $proofPath, $payerNote]
         );
 
-        return ['ok' => true, 'payment_id' => $pid];
+        return ['ok' => true, 'payment_id' => $pid, 'base_amount' => $amtNorm];
     }
 
     public static function reviewManualPayment(int $paymentId, int $adminId, string $decision, string $adminNote = ''): array
@@ -239,7 +249,7 @@ class PaymentService
                     "INSERT INTO notifications (user_id, type, title, message, link) VALUES (?, 'payment', ?, ?, ?)",
                     [
                         $payment['user_id'],
-                        'Payment Approved: ' . Currency::format((string)$payment['net_amount']),
+                        'Payment Approved: ' . Currency::formatBase((string)$payment['net_amount'], 2, true),
                         'Your manual payment (' . $payment['transaction_ref'] . ') was approved and added to your wallet.',
                         '/user/add-funds.php',
                     ]

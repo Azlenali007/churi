@@ -19,7 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'manua
         $proofPath = $up['path'];
     }
 
-    $res = PaymentService::submitManualPayment((int)$user['id'], $gatewayId, $amount, $txRef, $payerNote, $proofPath);
+    $displayCode = strtoupper(trim((string)($_POST['display_currency'] ?? Currency::getActiveDisplayCode($user))));
+    $res = PaymentService::submitManualPayment((int)$user['id'], $gatewayId, $amount, $txRef, $payerNote, $proofPath, $displayCode);
     if ($res['ok']) {
         Helpers::setFlash('success', 'Manual payment request submitted! Funds will be credited after admin verification.');
     } else {

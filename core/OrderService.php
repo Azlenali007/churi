@@ -13,7 +13,8 @@ class OrderService
         }
 
         $service = Database::fetch(
-            "SELECT s.*, p.id AS prov_id, p.api_url, p.api_key_enc, p.exchange_rate AS prov_ex_rate, p.status AS prov_status
+            "SELECT s.*, p.id AS prov_id, p.api_url, p.api_key_enc, p.currency_code AS prov_currency,
+                    p.exchange_rate AS prov_ex_rate, p.rate_mode AS prov_rate_mode, p.status AS prov_status
              FROM services s
              LEFT JOIN providers p ON p.id = s.provider_id
              WHERE s.id = ? AND s.status = 'active' LIMIT 1",
@@ -47,9 +48,17 @@ class OrderService
             return ['ok' => false, 'error' => 'Calculated order amount is invalid.'];
         }
 
-        // Compute provider cost in system base currency
+        // Compute provider cost in system base currency (currency-aware)
+        $baseCode = Currency::getBaseCode();
+        $provCurrCode = (string)($service['provider_currency'] ?: ($service['prov_currency'] ?: $baseCode));
         $providerRateBase = !empty($service['prov_id'])
-            ? Currency::mul((string)$service['provider_rate'], (string)$service['prov_ex_rate'], 4)
+            ? Currency::calculateProviderToBase(
+                (string)$service['provider_rate'],
+                $provCurrCode,
+                '0',
+                (string)($service['prov_rate_mode'] ?? 'auto'),
+                (string)($service['prov_ex_rate'] ?? '1')
+            )['cost_base']
             : '0.0000';
         $providerCost = Currency::calculateOrderCharge($providerRateBase, $quantity);
         $profit = Currency::sub($charge, $providerCost, 4);
@@ -84,9 +93,9 @@ class OrderService
             $orderId = Database::insert(
                 "INSERT INTO orders
                  (user_id, child_panel_id, child_panel_user_id, service_id, provider_id, flash_sale_id,
-                  link, quantity, remains, unit_price, original_unit_price, charge, provider_cost, profit,
+                  link, quantity, remains, unit_price, original_unit_price, charge, currency_code, provider_cost, profit,
                   is_mass_order, mass_order_batch, is_api_order, custom_comments, drip_feed_runs, drip_feed_interval, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')",
                 [
                     $userId,
                     $childPanelId,
@@ -100,6 +109,7 @@ class OrderService
                     $effectiveUnitRate,
                     $pricing['original_rate'],
                     $charge,
+                    $baseCode,
                     $providerCost,
                     $profit,
                     $isMass,

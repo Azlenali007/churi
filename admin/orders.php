@@ -175,8 +175,9 @@ require __DIR__ . '/includes/header.php';
                             <div class="text-[11px] text-slate-500">Qty: <?= (int)$o['quantity'] ?> | Rem: <?= (int)$o['remains'] ?></div>
                         </td>
                         <td class="py-3 pr-3">
-                            <div class="font-bold text-slate-900"><?= Currency::format((string)$o['charge']) ?></div>
-                            <div class="text-[11px] text-emerald-600">Profit: <?= Currency::format((string)$o['profit']) ?></div>
+                            <?php $oCurr = (string)($o['currency_code'] ?: Currency::getBaseCode()); ?>
+                            <div class="font-bold text-slate-900 tabular-nums"><?= Currency::formatRaw((string)$o['charge'], $oCurr, 2, true) ?></div>
+                            <div class="text-[11px] text-emerald-600 tabular-nums">Profit: <?= Currency::formatRaw((string)$o['profit'], $oCurr, 2, true) ?></div>
                         </td>
                         <td class="py-3 pr-3"><?= Helpers::statusBadge((string)$o['status']) ?></td>
                         <td class="py-3 text-right whitespace-nowrap">

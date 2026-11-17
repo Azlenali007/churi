@@ -181,8 +181,8 @@ require __DIR__ . '/includes/header.php';
                 <div class="p-3 rounded-2xl bg-[#F6F4FC] flex items-center justify-between gap-3 text-xs">
                     <div class="min-w-0">
                         <div class="font-bold text-slate-900 truncate"><?= Validator::e($pr['name']) ?></div>
-                        <div class="text-[11px] <?= $pr['last_error'] ? 'text-rose-600' : 'text-slate-500' ?> truncate">
-                            <?= $pr['last_error'] ? Validator::e($pr['last_error']) : ('Balance: ' . Validator::e($pr['currency_code']) . ' ' . number_format((float)$pr['balance'], 2)) ?>
+                        <div class="text-[11px] <?= $pr['last_error'] ? 'text-rose-600' : 'text-slate-500' ?> truncate tabular-nums">
+                            <?= $pr['last_error'] ? Validator::e($pr['last_error']) : ('Balance: ' . Currency::formatRaw((string)$pr['balance'], (string)($pr['currency_code'] ?: Currency::getBaseCode()), 2, true)) ?>
                         </div>
                     </div>
                     <?= Helpers::statusBadge((string)$pr['status']) ?>
@@ -229,13 +229,13 @@ require __DIR__ . '/includes/header.php';
             <p class="text-xs text-slate-500">No wallet transactions recorded yet.</p>
         <?php else: ?>
             <div class="divide-y divide-slate-100 text-xs">
-                <?php foreach ($recentTx as $rt): ?>
+                <?php $baseCode = Currency::getBaseCode(); foreach ($recentTx as $rt): $rtCurr = (string)($rt['currency_code'] ?: $baseCode); ?>
                 <div class="py-2.5 flex items-center justify-between gap-3">
                     <div class="min-w-0">
                         <div class="font-bold text-slate-900">@<?= Validator::e($rt['username']) ?> <span class="font-normal text-slate-500">(<?= Validator::e($rt['type']) ?>)</span></div>
                         <div class="text-slate-500 truncate"><?= Validator::e($rt['description']) ?></div>
                     </div>
-                    <div class="font-bold text-purple-700 shrink-0"><?= Currency::format((string)$rt['amount']) ?></div>
+                    <div class="font-bold text-purple-700 shrink-0 tabular-nums"><?= Currency::formatRaw((string)$rt['amount'], $rtCurr, 2, true) ?></div>
                 </div>
                 <?php endforeach; ?>
             </div>

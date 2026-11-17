@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $platform = Validator::str($_POST['platform'] ?? 'general', 60);
         $type = in_array($_POST['type'] ?? '', ['default','custom_comments','package','drip_feed','subscriptions'], true) ? $_POST['type'] : 'default';
         $provRate = Currency::normalize((string)($_POST['provider_rate'] ?? '0'), 4);
+        $provCurr = strtoupper(Validator::str($_POST['provider_currency'] ?? Currency::getBaseCode(), 10));
         $rate = Currency::normalize((string)($_POST['rate'] ?? '0'), 4);
         $minQty = max(1, (int)($_POST['min_qty'] ?? 10));
         $maxQty = max($minQty, (int)($_POST['max_qty'] ?? 10000));
@@ -28,15 +29,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($id > 0) {
             Database::execute(
-                "UPDATE services SET category_id=?, subcategory_id=?, name=?, description=?, platform=?, icon_key=?, type=?, provider_rate=?, rate=?, min_qty=?, max_qty=?, avg_time=?, sort_order=?, refill_support=?, cancel_support=?, drip_feed_support=?, status=? WHERE id=?",
-                [$catId, $subId, $name, $desc, $platform, $platform, $type, $provRate, $rate, $minQty, $maxQty, $avgTime, $sort, $refill, $cancel, $drip, $status, $id]
+                "UPDATE services SET category_id=?, subcategory_id=?, name=?, description=?, platform=?, icon_key=?, type=?, provider_rate=?, provider_currency=?, rate=?, min_qty=?, max_qty=?, avg_time=?, sort_order=?, refill_support=?, cancel_support=?, drip_feed_support=?, status=? WHERE id=?",
+                [$catId, $subId, $name, $desc, $platform, $platform, $type, $provRate, $provCurr, $rate, $minQty, $maxQty, $avgTime, $sort, $refill, $cancel, $drip, $status, $id]
             );
             Helpers::setFlash('success', 'Service #' . $id . ' updated.');
         } else {
             Database::insert(
-                "INSERT INTO services (category_id, subcategory_id, name, description, platform, icon_key, type, provider_rate, rate, min_qty, max_qty, avg_time, sort_order, refill_support, cancel_support, drip_feed_support, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [$catId, $subId, $name, $desc, $platform, $platform, $type, $provRate, $rate, $minQty, $maxQty, $avgTime, $sort, $refill, $cancel, $drip, $status]
+                "INSERT INTO services (category_id, subcategory_id, name, description, platform, icon_key, type, provider_rate, provider_currency, rate, min_qty, max_qty, avg_time, sort_order, refill_support, cancel_support, drip_feed_support, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [$catId, $subId, $name, $desc, $platform, $platform, $type, $provRate, $provCurr, $rate, $minQty, $maxQty, $avgTime, $sort, $refill, $cancel, $drip, $status]
             );
             Helpers::setFlash('success', 'Service created.');
         }
@@ -71,7 +72,7 @@ $categories = Database::fetchAll("SELECT * FROM categories ORDER BY sort_order A
 $subcategories = Database::fetchAll("SELECT * FROM subcategories ORDER BY sort_order ASC");
 $catFilter = (int)($_GET['category_id'] ?? 0);
 
-$sql = "SELECT s.*, c.name AS category_name, p.name AS provider_name
+$sql = "SELECT s.*, c.name AS category_name, p.name AS provider_name, p.currency_code AS prov_currency
         FROM services s
         JOIN categories c ON c.id = s.category_id
         LEFT JOIN providers p ON p.id = s.provider_id
@@ -124,7 +125,7 @@ require __DIR__ . '/includes/header.php';
                     </select>
                 </div>
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div class="grid grid-cols-2 sm:grid-cols-6 gap-3">
                 <div>
                     <label class="block font-bold uppercase text-slate-500 mb-1">Platform</label>
                     <select name="platform" :value="editSvc?.platform || 'instagram'" class="w-full px-3 py-2 rounded-xl border border-purple-200">
@@ -146,7 +147,15 @@ require __DIR__ . '/includes/header.php';
                     <input type="number" step="0.0001" name="provider_rate" :value="editSvc?.provider_rate ?? '0'" class="w-full px-3 py-2 rounded-xl border border-purple-200">
                 </div>
                 <div>
-                    <label class="block font-bold uppercase text-slate-500 mb-1">Selling Price / 1k</label>
+                    <label class="block font-bold uppercase text-slate-500 mb-1">Prov Currency</label>
+                    <select name="provider_currency" :value="editSvc?.provider_currency || editSvc?.prov_currency || '<?= Validator::e(Currency::getBaseCode()) ?>'" class="w-full px-3 py-2 rounded-xl border border-purple-200">
+                        <?php foreach (Currency::getAllCurrencies() as $cc => $cr): ?>
+                            <option value="<?= Validator::e($cc) ?>"><?= Validator::e($cc) ?> (<?= Validator::e($cr['symbol']) ?>)</option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold uppercase text-slate-500 mb-1">Selling (<?= Validator::e(Currency::getBaseCode()) ?> / 1k)</label>
                     <input type="number" step="0.0001" name="rate" :value="editSvc?.rate ?? '100'" required class="w-full px-3 py-2 rounded-xl border border-purple-200 font-bold">
                 </div>
                 <div>
@@ -220,8 +229,9 @@ require __DIR__ . '/includes/header.php';
                             </td>
                             <td class="py-2.5 pr-3 text-slate-600"><?= Validator::e($s['category_name']) ?></td>
                             <td class="py-2.5 pr-3">
-                                <div class="font-bold text-purple-700"><?= Currency::format((string)$s['rate']) ?></div>
-                                <div class="text-[10px] text-slate-400">Cost: <?= Currency::normalize((string)$s['provider_rate'], 2) ?></div>
+                                <?php $pCurr = (string)($s['provider_currency'] ?: ($s['prov_currency'] ?: Currency::getBaseCode())); ?>
+                                <div class="font-bold text-purple-700 tabular-nums"><?= Currency::formatBase((string)$s['rate'], 2, true) ?></div>
+                                <div class="text-[10px] text-slate-400 tabular-nums">Cost: <?= Currency::formatRaw((string)$s['provider_rate'], $pCurr, 2, true) ?></div>
                             </td>
                             <td class="py-2.5 pr-3 text-slate-500"><?= (int)$s['min_qty'] ?> - <?= (int)$s['max_qty'] ?></td>
                             <td class="py-2.5 pr-3"><?= Helpers::statusBadge((string)$s['status']) ?></td>

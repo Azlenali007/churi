@@ -25,6 +25,9 @@ if ($search !== '') {
 }
 $sql .= " ORDER BY o.id DESC LIMIT 100";
 $orders = Database::fetchAll($sql, $params);
+$displayCurr = Currency::getActiveDisplayCurrency($user);
+$displayCode = $displayCurr['code'];
+$baseCode = Currency::getBaseCode();
 ?>
 
 <div class="smm-card rounded-3xl p-6" x-data="{ detailOrder: null }">
@@ -67,17 +70,30 @@ $orders = Database::fetchAll($sql, $params);
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                    <?php foreach ($orders as $ord): ?>
+                    <?php foreach ($orders as $ord):
+                        $oCurr = (string)($ord['currency_code'] ?? $baseCode);
+                        if ($oCurr === '') $oCurr = $baseCode;
+                        $chargeFormatted = Currency::formatRaw((string)$ord['charge'], $oCurr, 2, true);
+                        $unitFormatted = Currency::formatRaw((string)$ord['unit_price'], $oCurr, 2, true);
+                        $chargeDisplayEq = ($displayCode !== $oCurr)
+                            ? Currency::display(Currency::convert((string)$ord['charge'], $oCurr, $baseCode, 4), null, 2, true)
+                            : null;
+                        $ord['charge_formatted'] = $chargeFormatted . ($chargeDisplayEq ? ' (≈ ' . $chargeDisplayEq . ')' : '');
+                        $ord['unit_formatted'] = $unitFormatted;
+                    ?>
                     <tr class="hover:bg-purple-50/40">
                         <td class="py-3.5 pr-3 font-bold text-slate-800">#<?= (int)$ord['id'] ?></td>
                         <td class="py-3.5 pr-3 text-xs text-slate-500 whitespace-nowrap"><?= date('M j, H:i', strtotime($ord['created_at'])) ?></td>
                         <td class="py-3.5 pr-3 max-w-[160px] truncate text-xs text-purple-700 font-medium">
                             <?= Validator::e($ord['link']) ?>
                         </td>
-                        <td class="py-3.5 pr-3 font-bold text-slate-900">
-                            <?= Currency::format((string)$ord['charge']) ?>
+                        <td class="py-3.5 pr-3 font-bold text-slate-900 tabular-nums">
+                            <div><?= Validator::e($chargeFormatted) ?></div>
+                            <?php if ($chargeDisplayEq): ?>
+                                <div class="text-[10px] font-semibold text-slate-400">&approx; <?= Validator::e($chargeDisplayEq) ?></div>
+                            <?php endif; ?>
                             <?php if (Currency::cmp((string)$ord['refunded_amount'], '0', 4) > 0): ?>
-                                <div class="text-[10px] text-emerald-600">Refunded: <?= Currency::format((string)$ord['refunded_amount']) ?></div>
+                                <div class="text-[10px] text-emerald-600">Refunded: <?= Currency::formatRaw((string)$ord['refunded_amount'], $oCurr, 2, true) ?></div>
                             <?php endif; ?>
                         </td>
                         <td class="py-3.5 pr-3 text-xs text-slate-600">
@@ -137,8 +153,8 @@ $orders = Database::fetchAll($sql, $params);
                     <div class="p-3 rounded-xl bg-slate-50"><strong>Remains</strong><div x-text="detailOrder?.remains"></div></div>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
-                    <div class="p-3 rounded-xl bg-slate-50"><strong>Unit Rate / 1k</strong><div x-text="detailOrder?.unit_price"></div></div>
-                    <div class="p-3 rounded-xl bg-slate-50"><strong>Total Charge</strong><div x-text="detailOrder?.charge"></div></div>
+                    <div class="p-3 rounded-xl bg-slate-50"><strong>Unit Rate / 1k</strong><div class="font-bold text-slate-900 tabular-nums" x-text="detailOrder?.unit_formatted || detailOrder?.unit_price"></div></div>
+                    <div class="p-3 rounded-xl bg-slate-50"><strong>Total Charge</strong><div class="font-bold text-purple-800 tabular-nums" x-text="detailOrder?.charge_formatted || detailOrder?.charge"></div></div>
                 </div>
             </div>
         </div>

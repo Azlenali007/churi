@@ -37,7 +37,7 @@ $apiOrders = Database::fetchAll(
                 </div>
                 <div class="p-3.5 rounded-2xl bg-[#F3F1FC] flex items-center justify-between">
                     <span class="font-semibold text-slate-600">API Wallet Balance</span>
-                    <span class="text-base font-extrabold text-purple-800"><?= Currency::format((string)$user['wallet_balance']) ?></span>
+                    <span class="text-base font-extrabold text-purple-800 tabular-nums"><?= Currency::display((string)$user['wallet_balance'], null, 2, true) ?></span>
                 </div>
 
                 <form method="POST" action="/user/reseller-api.php">

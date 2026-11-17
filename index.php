@@ -163,12 +163,12 @@ require __DIR__ . '/includes/public_header.php';
                                     </div>
                                 </td>
                                 <td class="py-3.5 pr-4 text-slate-600"><?= Validator::e($svc['category_name']) ?></td>
-                                <td class="py-3.5 pr-4 font-bold text-purple-700">
+                                <td class="py-3.5 pr-4 font-bold text-purple-700 tabular-nums whitespace-nowrap">
                                     <?php if ($pricing['on_sale']): ?>
-                                        <span class="line-through text-slate-400 text-xs mr-1"><?= Currency::format($pricing['original_rate']) ?></span>
-                                        <span class="text-rose-600"><?= Currency::format($pricing['effective_rate']) ?></span>
+                                        <span class="line-through text-slate-400 text-xs mr-1"><?= Currency::displayRate($pricing['original_rate'], null, true) ?></span>
+                                        <span class="text-rose-600"><?= Currency::displayRate($pricing['effective_rate'], null, true) ?></span>
                                     <?php else: ?>
-                                        <?= Currency::format($pricing['effective_rate']) ?>
+                                        <?= Currency::displayRate($pricing['effective_rate'], null, true) ?>
                                     <?php endif; ?>
                                 </td>
                                 <td class="py-3.5 pr-4 text-xs text-slate-500"><?= number_format((int)$svc['min_qty']) ?> - <?= number_format((int)$svc['max_qty']) ?></td>

@@ -32,6 +32,7 @@ if ($search !== '') {
 $sql .= " ORDER BY c.sort_order ASC, s.sort_order ASC, s.id ASC";
 $services = Database::fetchAll($sql, $params);
 
+$activeCurr = Currency::getActiveDisplayCurrency($user);
 $grouped = [];
 foreach ($services as $svc) {
     $grouped[$svc['category_name']]['platform'] = $svc['cat_platform'];
@@ -39,22 +40,27 @@ foreach ($services as $svc) {
 }
 ?>
 
-<div class="smm-card rounded-3xl p-6" x-data="{ descModal: null }">
+<div class="smm-card rounded-3xl p-5 sm:p-6" x-data="{ descModal: null }">
     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
         <div>
-            <h1 class="text-xl font-extrabold text-slate-900">Service Directory</h1>
-            <p class="text-sm text-slate-500">All available SMM services with live rates, limits, and refill/cancel support.</p>
+            <div class="flex flex-wrap items-center gap-2">
+                <h1 class="text-xl font-extrabold text-slate-900">Service Directory</h1>
+                <span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[11px] font-extrabold">
+                    Rates in <?= Validator::e($activeCurr['symbol'] . ' ' . $activeCurr['code']) ?>
+                </span>
+            </div>
+            <p class="text-sm text-slate-500">All available SMM services with live rates per 1,000, limits, and refill/cancel support.</p>
         </div>
         <form method="GET" action="/user/services.php" class="flex flex-wrap gap-2">
             <input type="text" name="search" value="<?= Validator::e($search) ?>" placeholder="Search ID or name..."
-                   class="px-4 py-2 rounded-xl border border-purple-200 text-sm outline-none focus:border-purple-600 w-52">
-            <select name="category_id" class="px-4 py-2 rounded-xl border border-purple-200 text-sm outline-none focus:border-purple-600">
+                   class="px-4 py-2 rounded-xl border border-purple-200 text-sm outline-none focus:border-purple-600 w-full sm:w-52 bg-white">
+            <select name="category_id" class="px-4 py-2 rounded-xl border border-purple-200 text-sm outline-none focus:border-purple-600 bg-white">
                 <option value="0">All Categories</option>
                 <?php foreach ($categories as $c): ?>
                     <option value="<?= (int)$c['id'] ?>" <?= $categoryId === (int)$c['id'] ? 'selected' : '' ?>><?= Validator::e($c['name']) ?></option>
                 <?php endforeach; ?>
             </select>
-            <button type="submit" class="px-4 py-2 rounded-xl bg-purple-600 text-white text-sm font-bold">Filter</button>
+            <button type="submit" class="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 text-white text-sm font-bold shadow-sm">Filter</button>
         </form>
     </div>
 
@@ -74,7 +80,7 @@ foreach ($services as $svc) {
                             <tr class="border-b border-purple-100 text-xs uppercase text-slate-400">
                                 <th class="py-2.5 px-3">ID</th>
                                 <th class="py-2.5 px-3">Service</th>
-                                <th class="py-2.5 px-3">Rate / 1k</th>
+                                <th class="py-2.5 px-3">Rate / 1k (<?= Validator::e($activeCurr['code']) ?>)</th>
                                 <th class="py-2.5 px-3">Min / Max</th>
                                 <th class="py-2.5 px-3">Support</th>
                                 <th class="py-2.5 px-3 text-right">Action</th>
@@ -93,12 +99,12 @@ foreach ($services as $svc) {
                                         </div>
                                     </div>
                                 </td>
-                                <td class="py-3 px-3 font-bold">
+                                <td class="py-3 px-3 font-bold tabular-nums whitespace-nowrap">
                                     <?php if ($p['on_sale']): ?>
-                                        <span class="line-through text-xs text-slate-400 mr-1"><?= Currency::format($p['original_rate']) ?></span>
-                                        <span class="text-rose-600"><?= Currency::format($p['effective_rate']) ?></span>
+                                        <span class="line-through text-xs text-slate-400 mr-1"><?= Currency::displayRate($p['original_rate'], null, true) ?></span>
+                                        <span class="text-rose-600"><?= Currency::displayRate($p['effective_rate'], null, true) ?></span>
                                     <?php else: ?>
-                                        <span class="text-purple-700"><?= Currency::format($p['effective_rate']) ?></span>
+                                        <span class="text-purple-700"><?= Currency::displayRate($p['effective_rate'], null, true) ?></span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="py-3 px-3 text-xs text-slate-600"><?= number_format((int)$s['min_qty']) ?> - <?= number_format((int)$s['max_qty']) ?></td>

@@ -223,20 +223,21 @@ require __DIR__ . '/includes/header.php';
         <div class="smm-card rounded-3xl p-5 text-xs space-y-3">
             <div class="font-extrabold text-slate-900">User Orders (<?= count($viewOrders) ?>) &amp; Logins (<?= count($viewLogins) ?>)</div>
             <div class="max-h-40 overflow-y-auto divide-y divide-slate-100">
-                <?php foreach ($viewOrders as $vo): ?>
-                <div class="py-1.5 flex justify-between">
-                    <span>#<?= (int)$vo['id'] ?> <?= Validator::e($vo['service_name']) ?></span>
-                    <span class="font-bold"><?= Currency::format((string)$vo['charge']) ?> (<?= Validator::e($vo['status']) ?>)</span>
+                <?php $baseCode = Currency::getBaseCode(); ?>
+                <?php foreach ($viewOrders as $vo): $voCurr = (string)($vo['currency_code'] ?: $baseCode); ?>
+                <div class="py-1.5 flex justify-between gap-2">
+                    <span class="truncate">#<?= (int)$vo['id'] ?> <?= Validator::e($vo['service_name']) ?></span>
+                    <span class="font-bold tabular-nums shrink-0"><?= Currency::formatRaw((string)$vo['charge'], $voCurr, 2, true) ?> (<?= Validator::e($vo['status']) ?>)</span>
                 </div>
                 <?php endforeach; ?>
                 <?php if (empty($viewOrders)) echo '<div class="text-slate-400">No orders</div>'; ?>
             </div>
             <div class="font-extrabold text-slate-900 pt-2 border-t">Recent Wallet Ledger</div>
             <div class="max-h-36 overflow-y-auto divide-y divide-slate-100">
-                <?php foreach ($viewTx as $vt): ?>
-                <div class="py-1.5 flex justify-between">
+                <?php foreach ($viewTx as $vt): $vtCurr = (string)($vt['currency_code'] ?: $baseCode); ?>
+                <div class="py-1.5 flex justify-between gap-2">
                     <span class="truncate max-w-[200px]"><?= Validator::e($vt['description']) ?></span>
-                    <span class="font-bold"><?= Currency::format((string)$vt['amount']) ?></span>
+                    <span class="font-bold tabular-nums shrink-0"><?= Currency::formatRaw((string)$vt['amount'], $vtCurr, 2, true) ?></span>
                 </div>
                 <?php endforeach; ?>
             </div>

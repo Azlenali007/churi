@@ -4,18 +4,20 @@ require __DIR__ . '/partials/head.php';
 require __DIR__ . '/partials/sidebar.php';
 require __DIR__ . '/partials/header.php';
 
+$displayCurr = Currency::getActiveDisplayCurrency($user);
+$displayCode = $displayCurr['code'];
+$currencySymbol = $displayCurr['symbol'];
 $services = Database::fetchAll("SELECT id, name, rate, min_qty, max_qty FROM services WHERE status = 'active'");
 $rateMap = [];
 foreach ($services as $s) {
     $p = FlashSale::getServicePricing($s);
     $rateMap[(int)$s['id']] = [
         'name' => $s['name'],
-        'rate' => (float)$p['effective_rate'],
+        'rate' => (float)Currency::convertFromBase((string)$p['effective_rate'], $displayCode, 4),
         'min'  => (int)$s['min_qty'],
         'max'  => (int)$s['max_qty'],
     ];
 }
-$currencySymbol = Helpers::setting('currency_symbol', '₹');
 ?>
 
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6"
@@ -71,8 +73,8 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                 <div class="text-xs text-slate-600">
                     Valid Lines: <strong x-text="parsed.valid">0</strong>
                 </div>
-                <div class="text-lg font-extrabold text-purple-800">
-                    Estimated Total: <?= Validator::e($currencySymbol) ?><span x-text="parsed.total">0.00</span>
+                <div class="text-lg font-extrabold text-purple-800 tabular-nums">
+                    Estimated Total: <?= Validator::e($currencySymbol) ?><span x-text="parsed.total">0.00</span> <span class="text-xs font-bold text-purple-600"><?= Validator::e($displayCode) ?></span>
                 </div>
             </div>
 
@@ -92,7 +94,7 @@ $currencySymbol = Helpers::setting('currency_symbol', '₹');
                 <div class="p-3 rounded-xl border text-xs" :class="r.err ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50/60 border-emerald-200'">
                     <div class="flex items-center justify-between font-bold">
                         <span x-text="`Line ${r.line}: #${r.sid || '?'}`"></span>
-                        <span x-show="!r.err" class="text-emerald-700"><?= Validator::e($currencySymbol) ?><span x-text="r.cost.toFixed(2)"></span></span>
+                        <span x-show="!r.err" class="text-emerald-700 tabular-nums"><?= Validator::e($currencySymbol) ?><span x-text="r.cost.toFixed(2)"></span> <?= Validator::e($displayCode) ?></span>
                     </div>
                     <div class="text-slate-600 truncate mt-0.5" x-text="r.svcName"></div>
                     <div x-show="r.err" class="text-rose-600 font-semibold mt-0.5" x-text="r.err"></div>

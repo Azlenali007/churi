@@ -93,13 +93,13 @@ require __DIR__ . '/includes/public_header.php';
                                             <div class="text-xs text-slate-400">Avg. Time: <?= Validator::e($s['avg_time']) ?></div>
                                         <?php endif; ?>
                                     </td>
-                                    <td class="py-3 px-3 font-bold">
+                                    <td class="py-3 px-3 font-bold tabular-nums whitespace-nowrap">
                                         <?php if ($p['on_sale']): ?>
-                                            <span class="line-through text-slate-400 text-xs"><?= Currency::format($p['original_rate']) ?></span>
-                                            <span class="text-rose-600 ml-1"><?= Currency::format($p['effective_rate']) ?></span>
+                                            <span class="line-through text-slate-400 text-xs"><?= Currency::displayRate($p['original_rate'], null, true) ?></span>
+                                            <span class="text-rose-600 ml-1"><?= Currency::displayRate($p['effective_rate'], null, true) ?></span>
                                             <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-700"><?= Validator::e($p['discount_label']) ?></span>
                                         <?php else: ?>
-                                            <span class="text-purple-700"><?= Currency::format($p['effective_rate']) ?></span>
+                                            <span class="text-purple-700"><?= Currency::displayRate($p['effective_rate'], null, true) ?></span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="py-3 px-3 text-xs text-slate-600"><?= number_format((int)$s['min_qty']) ?> / <?= number_format((int)$s['max_qty']) ?></td>

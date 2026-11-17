@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ]);
 
     if ($res['ok']) {
-        Helpers::setFlash('success', 'Order #' . $res['order_id'] . ' placed! Charged ' . Currency::format($res['charge']) . '.');
+        Helpers::setFlash('success', 'Order #' . $res['order_id'] . ' placed! Charged ' . Currency::display($res['charge'], null, 2, true) . '.');
         Helpers::redirect('/user/orders.php');
     } else {
         Helpers::setFlash('error', $res['error'] ?? 'Could not place order.');

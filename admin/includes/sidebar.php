@@ -22,6 +22,7 @@ $adminNav = [
     ['file' => 'content.php',      'label' => 'Website CMS',     'perm' => 'content.manage'],
     ['file' => 'reports.php',      'label' => 'Reports & CSV',   'perm' => 'reports.view'],
     ['file' => 'staff.php',        'label' => 'Staff & 2FA',     'perm' => 'staff.manage'],
+    ['file' => 'currencies.php',   'label' => 'Currencies & Rates','perm'=> 'settings.manage'],
     ['file' => 'settings.php',     'label' => 'System Settings', 'perm' => 'settings.manage'],
     ['file' => 'logs.php',         'label' => 'Logs & Health',   'perm' => 'logs.view'],
 ];

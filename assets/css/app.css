@@ -5,17 +5,26 @@
   --brand-primary-dark: #5b21b6;
   --brand-sidebar-top: #1b1145;
   --brand-sidebar-bottom: #120933;
-  --surface-bg: #f6f4fc;
+  --surface-bg: #f4f2fc;
 }
 
 body {
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: var(--surface-bg);
+  background-image:
+    radial-gradient(640px 420px at 8% -4%, rgba(167, 139, 250, 0.22), transparent 65%),
+    radial-gradient(560px 420px at 96% 12%, rgba(192, 132, 252, 0.18), transparent 65%),
+    radial-gradient(520px 380px at 82% 94%, rgba(139, 92, 246, 0.14), transparent 70%);
+  background-attachment: fixed;
   color: #1e1b4b;
 }
 
 [x-cloak] {
   display: none !important;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 .smm-sidebar {
@@ -28,14 +37,28 @@ body {
 }
 
 .smm-card {
-  background: #ffffff;
-  border: 1px solid rgba(139, 92, 246, 0.12);
-  box-shadow: 0 4px 20px -4px rgba(30, 27, 75, 0.05);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(139, 92, 246, 0.13);
+  box-shadow: 0 10px 30px -10px rgba(76, 29, 149, 0.08), 0 2px 8px -2px rgba(30, 27, 75, 0.04);
+}
+
+.smm-greeting-card {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96) 0%, rgba(243, 240, 255, 0.95) 60%, rgba(235, 230, 255, 0.96) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.16);
+  box-shadow: 0 12px 32px -12px rgba(91, 33, 182, 0.12);
 }
 
 .smm-wallet-card {
-  background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 55%, #a855f7 100%);
-  box-shadow: 0 14px 30px -10px rgba(109, 40, 217, 0.55);
+  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 45%, #8b5cf6 100%);
+  box-shadow: 0 16px 36px -10px rgba(109, 40, 217, 0.55);
+}
+
+.smm-bottom-nav {
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(139, 92, 246, 0.14);
+  box-shadow: 0 -10px 30px -10px rgba(49, 46, 129, 0.14);
 }
 
 /* Custom thin scrollbars */
