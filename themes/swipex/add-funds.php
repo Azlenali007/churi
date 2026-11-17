@@ -31,6 +31,21 @@ $rzpMinDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['mi
 $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['max_amount'], $displayCode, 2) : '0.00';
 ?>
 
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        </div>
+        <div class="min-w-0">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Wallet &amp; Add Funds</h1>
+            <p class="text-xs text-slate-500">Top up instantly via Razorpay or manual transfer with live ledger history.</p>
+        </div>
+    </div>
+    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm">
+        <?= Validator::e($currencySymbol . ' ' . $displayCode) ?>
+    </span>
+</div>
+
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
     <!-- Left Wallet & Deposit Form -->
     <div class="lg:col-span-5 space-y-6 min-w-0">
@@ -64,7 +79,7 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Amount (<?= Validator::e($currencySymbol . ' ' . $displayCode) ?>)</label>
                         <input type="number" step="0.01" min="<?= Validator::e($rzpMinDisp) ?>" max="<?= Validator::e($rzpMaxDisp) ?>"
-                               x-model="rzpAmount" class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-600 outline-none text-sm font-bold tabular-nums bg-white">
+                               x-model="rzpAmount" class="swipex-input px-4 py-2.5 text-sm font-bold tabular-nums">
                         <div class="text-[11px] text-slate-500 mt-1 tabular-nums">
                             Limits: <?= Currency::display((string)$rzpCfg['gateway']['min_amount'], $displayCode, 2, true) ?> &ndash; <?= Currency::display((string)$rzpCfg['gateway']['max_amount'], $displayCode, 2, true) ?>
                         </div>
@@ -76,7 +91,7 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                     </div>
                     <button type="button" :disabled="rzpBusy"
                             @click="startRazorpay(rzpAmount, '<?= Validator::e(CSRF::token()) ?>', '<?= Validator::e($displayCode) ?>', () => rzpBusy = true, () => rzpBusy = false)"
-                            class="w-full py-3.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-600/25 transition">
+                            class="swipex-btn-primary w-full py-3.5 rounded-full font-bold text-sm">
                         <span x-text="rzpBusy ? 'Connecting to Razorpay...' : 'Pay Securely with Razorpay'"></span>
                     </button>
                     <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
@@ -146,7 +161,7 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                         <input type="hidden" name="display_currency" value="<?= Validator::e($displayCode) ?>">
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Payment Method</label>
-                            <select name="gateway_id" x-model="gid" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold outline-none focus:border-blue-600 bg-white">
+                            <select name="gateway_id" x-model="gid" class="swipex-input px-3.5 py-2.5 text-sm font-semibold">
                                 <?php foreach ($manualGateways as $mg): ?>
                                     <option value="<?= (int)$mg['id'] ?>"><?= Validator::e($mg['name']) ?></option>
                                 <?php endforeach; ?>
@@ -160,7 +175,7 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
 
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Amount Sent (<?= Validator::e($currencySymbol . ' ' . $displayCode) ?>)</label>
-                            <input type="number" step="0.01" min="0.01" name="amount" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm font-bold outline-none focus:border-blue-600 tabular-nums bg-white">
+                            <input type="number" step="0.01" min="0.01" name="amount" required class="swipex-input px-3.5 py-2.5 text-sm font-bold tabular-nums">
                             <?php if ($displayCode !== $baseCode): ?>
                             <div class="text-[11px] text-slate-500 mt-1">
                                 Converted from <?= Validator::e($displayCode) ?> to <?= Validator::e($baseCode) ?> once upon submission.
@@ -169,7 +184,7 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1">UTR / Transaction Reference ID</label>
-                            <input type="text" name="transaction_ref" required placeholder="e.g. UTR1234567890" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-blue-600 bg-white">
+                            <input type="text" name="transaction_ref" required placeholder="e.g. UTR1234567890" class="swipex-input px-3.5 py-2.5 text-sm">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Payment Screenshot / Proof (Optional)</label>
@@ -177,9 +192,9 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Notes</label>
-                            <input type="text" name="payer_note" placeholder="Sender name or UPI ID" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm outline-none focus:border-blue-600 bg-white">
+                            <input type="text" name="payer_note" placeholder="Sender name or UPI ID" class="swipex-input px-3.5 py-2.5 text-sm">
                         </div>
-                        <button type="submit" class="w-full py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition">Submit Payment Request</button>
+                        <button type="submit" class="swipex-btn-primary w-full py-3 rounded-full font-bold text-sm">Submit Payment Request</button>
                     </form>
                 <?php endif; ?>
             </div>

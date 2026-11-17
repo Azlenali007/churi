@@ -87,6 +87,7 @@ foreach ($quickServicesRaw as $qs) {
     $quickServices[] = $qs;
 }
 
+// Ordered so active=0 shows Refer & Earn (rose-pink) peeking left & Mass Order (violet-purple) peeking right
 $swipeCards = [
     [
         'title'    => 'New Order',
@@ -134,15 +135,6 @@ $swipeCards = [
         'icon'     => '<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>',
     ],
     [
-        'title'    => 'Refer & Earn',
-        'subtitle' => 'Share your link & earn deposit commissions',
-        'href'     => '/user/referrals.php',
-        'grad'     => 'from-rose-500 via-pink-600 to-fuchsia-600',
-        'btnColor' => 'text-rose-600',
-        'shadow'   => 'shadow-rose-500/30',
-        'icon'     => '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>',
-    ],
-    [
         'title'    => 'Child Panel',
         'subtitle' => 'Launch your own branded white-label SMM store',
         'href'     => '/user/child-panel.php',
@@ -151,11 +143,20 @@ $swipeCards = [
         'shadow'   => 'shadow-slate-800/30',
         'icon'     => '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
     ],
+    [
+        'title'    => 'Refer & Earn',
+        'subtitle' => 'Share your link & earn deposit commissions',
+        'href'     => '/user/referrals.php',
+        'grad'     => 'from-rose-500 via-pink-600 to-fuchsia-600',
+        'btnColor' => 'text-rose-600',
+        'shadow'   => 'shadow-rose-500/30',
+        'icon'     => '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>',
+    ],
 ];
 ?>
 
 <!-- SwipeX Minimal Open Greeting & Elevated Balance Hero (Matches Reference Photo) -->
-<div class="max-w-2xl mx-auto lg:max-w-none space-y-5 mb-6">
+<div class="max-w-2xl mx-auto lg:max-w-none space-y-4 sm:space-y-5 mb-5 sm:mb-6">
     <!-- User Greeting Block -->
     <div class="flex items-center justify-between gap-4 px-1">
         <div class="flex items-center gap-3.5 min-w-0">
@@ -179,7 +180,7 @@ $swipeCards = [
     </div>
 
     <!-- Elevated White Your Balance Card -->
-    <div class="swipex-balance-card rounded-2xl p-5 sm:p-6 flex items-center justify-between gap-4">
+    <div class="swipex-balance-card rounded-[22px] p-5 sm:p-6 flex items-center justify-between gap-4">
         <div class="min-w-0">
             <div class="text-xs font-semibold text-slate-400">Your Balance</div>
             <div class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-0.5 tabular-nums truncate">
@@ -187,7 +188,7 @@ $swipeCards = [
             </div>
         </div>
         <a href="/user/add-funds.php"
-           class="shrink-0 inline-flex items-center gap-1.5 px-5 py-2.5 sm:py-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-600/25 transition">
+           class="swipex-btn-primary shrink-0 inline-flex items-center gap-1.5 px-5 py-2.5 sm:py-3 rounded-full text-xs sm:text-sm font-bold">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
             <span>Add Funds</span>
         </a>
@@ -195,13 +196,19 @@ $swipeCards = [
 </div>
 
 <!-- SwipeX Center-Focus Interactive Swipeable Action Carousel -->
-<div class="mb-7 overflow-hidden"
+<div class="-mx-4 sm:mx-0 mb-7 overflow-hidden"
      x-data="{
         active: 0,
         total: <?= count($swipeCards) ?>,
+        vw: typeof window !== 'undefined' ? window.innerWidth : 390,
         startX: 0,
         deltaX: 0,
         dragging: false,
+        stepX() {
+            if (this.vw >= 1024) return 256;
+            if (this.vw >= 768) return 244;
+            return Math.min(205, Math.max(166, Math.round(this.vw * 0.445)));
+        },
         offsetFor(idx) {
             let d = idx - this.active;
             if (d > this.total / 2) d -= this.total;
@@ -211,10 +218,10 @@ $swipeCards = [
         cardStyle(idx) {
             const d = this.offsetFor(idx);
             const absD = Math.abs(d);
-            const dragShift = this.dragging ? this.deltaX * 0.35 : 0;
-            const translateX = (d * 245) + dragShift;
-            const scale = d === 0 ? 1 : (absD === 1 ? 0.87 : 0.76);
-            const opacity = d === 0 ? 1 : (absD === 1 ? 0.92 : 0);
+            const dragShift = this.dragging ? this.deltaX * 0.38 : 0;
+            const translateX = (d * this.stepX()) + dragShift;
+            const scale = d === 0 ? 1 : (absD === 1 ? 0.86 : 0.74);
+            const opacity = d === 0 ? 1 : (absD === 1 ? 0.94 : 0);
             const zIndex = 30 - absD * 10;
             return `transform: translateX(calc(-50% + ${translateX}px)) scale(${scale}); opacity: ${opacity}; z-index: ${zIndex}; pointer-events: ${absD <= 1 ? 'auto' : 'none'};`;
         },
@@ -224,29 +231,30 @@ $swipeCards = [
         onTouchMove(e) { if (this.dragging) this.deltaX = e.touches[0].clientX - this.startX; },
         onTouchEnd() {
             if (!this.dragging) return;
-            if (this.deltaX < -42) this.next();
-            else if (this.deltaX > 42) this.prev();
+            if (this.deltaX < -38) this.next();
+            else if (this.deltaX > 38) this.prev();
             this.dragging = false;
             this.deltaX = 0;
         }
      }"
+     @resize.window="vw = window.innerWidth"
      @touchstart.passive="onTouchStart($event)"
      @touchmove.passive="onTouchMove($event)"
      @touchend="onTouchEnd()">
 
     <div class="swipex-deck-stage">
         <?php foreach ($swipeCards as $idx => $card): ?>
-        <div class="swipex-deck-card bg-gradient-to-br <?= Validator::e($card['grad']) ?> text-white shadow-2xl <?= Validator::e($card['shadow']) ?> p-6 flex flex-col items-center justify-center text-center cursor-pointer"
+        <div class="swipex-deck-card bg-gradient-to-br <?= Validator::e($card['grad']) ?> text-white shadow-2xl <?= Validator::e($card['shadow']) ?> p-5 sm:p-6 flex flex-col items-center justify-center text-center cursor-pointer"
              :style="cardStyle(<?= $idx ?>)"
              @click="if (offsetFor(<?= $idx ?>) !== 0) { active = <?= $idx ?>; } else { window.location.href = '<?= Validator::e($card['href']) ?>'; }">
-            <div class="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm border border-white/25 flex items-center justify-center mb-4 shadow-inner">
-                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><?= $card['icon'] ?></svg>
+            <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white/20 backdrop-blur-sm border border-white/25 flex items-center justify-center mb-3.5 sm:mb-4 shadow-inner">
+                <svg class="w-6 h-6 sm:w-7 sm:h-7 text-white" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><?= $card['icon'] ?></svg>
             </div>
             <h2 class="text-xl sm:text-2xl font-extrabold tracking-tight"><?= Validator::e($card['title']) ?></h2>
-            <p class="text-xs sm:text-sm text-white/85 mt-1.5 max-w-[230px] leading-relaxed"><?= Validator::e($card['subtitle']) ?></p>
+            <p class="text-xs sm:text-sm text-white/85 mt-1.5 max-w-[225px] leading-relaxed"><?= Validator::e($card['subtitle']) ?></p>
             <a href="<?= Validator::e($card['href']) ?>"
                @click.stop
-               class="mt-5 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-white hover:bg-slate-50 <?= Validator::e($card['btnColor']) ?> font-extrabold text-xs sm:text-sm shadow-md transition">
+               class="mt-4 sm:mt-5 inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-white hover:bg-slate-50 <?= Validator::e($card['btnColor']) ?> font-extrabold text-xs sm:text-sm shadow-md transition">
                 <span>Open</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
             </a>
@@ -255,7 +263,7 @@ $swipeCards = [
     </div>
 
     <!-- Deck Controls & Dots -->
-    <div class="flex items-center justify-center gap-3 mt-1">
+    <div class="flex items-center justify-center gap-3 mt-1 px-4">
         <button type="button" @click="prev()" aria-label="Previous card" class="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-600 hover:text-blue-600 flex items-center justify-center shadow-sm transition">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
@@ -275,10 +283,13 @@ $swipeCards = [
 <?php require APP_ROOT . '/includes/flash_sale_banner.php'; ?>
 
 <?php if (!empty($popularPlatforms)): ?>
-<!-- Popular Services Section -->
+<!-- Popular Services Section (Matches SwipeX Reference Preview Strip) -->
 <div class="swipex-card rounded-3xl p-5 sm:p-6 mb-6">
     <div class="flex items-center justify-between mb-4">
-        <h2 class="text-base font-extrabold text-slate-900">Popular Services</h2>
+        <div class="flex items-center gap-2">
+            <h2 class="text-base font-extrabold text-slate-900">Services</h2>
+            <span class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold">Popular</span>
+        </div>
         <a href="/user/services.php" class="text-xs font-bold text-blue-600 hover:underline">View All &rarr;</a>
     </div>
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
@@ -287,7 +298,7 @@ $swipeCards = [
             $pName = PLATFORM_KEYS[$pKey] ?? ucfirst($pKey);
         ?>
         <a href="/user/services.php?platform=<?= urlencode($pKey) ?>"
-           class="group rounded-2xl bg-slate-50/90 hover:bg-blue-50/70 border border-slate-200/70 p-4 text-center transition">
+           class="group rounded-2xl bg-slate-50/90 hover:bg-blue-50/70 border border-slate-200/75 p-4 text-center transition">
             <div class="flex justify-center mb-2.5 group-hover:scale-105 transition-transform">
                 <?= Helpers::platformIcon($pKey, 'w-10 h-10 rounded-xl') ?>
             </div>
@@ -336,26 +347,26 @@ $swipeCards = [
             <form action="/user/new-order.php" method="POST" class="space-y-3">
                 <?= CSRF::field() ?>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <select x-model="categoryId" @change="syncFirstService()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold outline-none focus:border-blue-600 bg-white">
+                    <select x-model="categoryId" @change="syncFirstService()" class="swipex-input px-3.5 py-2.5 text-xs font-semibold">
                         <?php foreach ($quickCategories as $qc): ?>
                             <option value="<?= (int)$qc['id'] ?>"><?= Validator::e($qc['name']) ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <select name="service_id" x-model="serviceId" @change="if(activeSvc) qty = Number(activeSvc.min_qty)" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold outline-none focus:border-blue-600 bg-white">
+                    <select name="service_id" x-model="serviceId" @change="if(activeSvc) qty = Number(activeSvc.min_qty)" class="swipex-input px-3.5 py-2.5 text-xs font-semibold">
                         <template x-for="s in filtered" :key="s.id">
                             <option :value="s.id" x-text="`#${s.id} ${s.name}`"></option>
                         </template>
                     </select>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <input type="text" name="link" required placeholder="Target link or @username" class="sm:col-span-2 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs outline-none focus:border-blue-600">
-                    <input type="number" name="quantity" x-model="qty" :min="activeSvc ? activeSvc.min_qty : 1" :max="activeSvc ? activeSvc.max_qty : 1000000" required class="px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:border-blue-600 tabular-nums">
+                    <input type="text" name="link" required placeholder="Target link or @username" class="swipex-input sm:col-span-2 px-3.5 py-2.5 text-xs">
+                    <input type="number" name="quantity" x-model="qty" :min="activeSvc ? activeSvc.min_qty : 1" :max="activeSvc ? activeSvc.max_qty : 1000000" required class="swipex-input px-3.5 py-2.5 text-xs font-bold tabular-nums">
                 </div>
                 <div class="flex items-center justify-between pt-1">
                     <div class="text-xs text-slate-500">
                         Estimated Charge: <strong class="text-sm text-blue-600 tabular-nums"><?= Validator::e($displaySymbol) ?><span x-text="total">0.00</span> <?= Validator::e($displayCode) ?></strong>
                     </div>
-                    <button type="submit" class="px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition">
+                    <button type="submit" class="swipex-btn-primary px-5 py-2.5 rounded-full text-xs font-bold">
                         Place Order
                     </button>
                 </div>

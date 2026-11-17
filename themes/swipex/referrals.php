@@ -32,6 +32,21 @@ $refHistory = Database::fetchAll(
 );
 ?>
 
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 text-white flex items-center justify-center shadow-md shadow-rose-500/25 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/></svg>
+        </div>
+        <div class="min-w-0">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Refer &amp; Earn</h1>
+            <p class="text-xs text-slate-500">Invite friends with your link &amp; earn <?= Validator::e($commRate) ?>% on every wallet deposit.</p>
+        </div>
+    </div>
+    <span class="px-3 py-1 rounded-full bg-white text-rose-600 text-xs font-extrabold border border-rose-200/80 shadow-sm">
+        <?= Validator::e($commRate) ?>% Commission
+    </span>
+</div>
+
 <div class="space-y-6">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="rounded-3xl p-6 bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20">
@@ -52,13 +67,13 @@ $refHistory = Database::fetchAll(
     </div>
 
     <div class="swipex-card rounded-3xl p-6">
-        <h1 class="text-lg font-extrabold text-slate-900 mb-3">Your Referral Link &amp; Code</h1>
+        <h2 class="text-lg font-extrabold text-slate-900 mb-3">Your Referral Link &amp; Code</h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="min-w-0">
                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Shareable Invite Link</label>
                 <div class="flex gap-2">
                     <input type="text" readonly value="<?= Validator::e($refLink) ?>" class="flex-1 min-w-0 px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono">
-                    <button type="button" onclick="copyText('<?= Validator::e($refLink) ?>', 'Referral link copied!')" class="px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0">Copy</button>
+                    <button type="button" onclick="copyText('<?= Validator::e($refLink) ?>', 'Referral link copied!')" class="swipex-btn-primary px-5 py-2.5 rounded-full text-xs font-bold shrink-0">Copy</button>
                 </div>
             </div>
             <div class="min-w-0">

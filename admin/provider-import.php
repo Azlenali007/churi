@@ -263,6 +263,7 @@ require __DIR__ . '/includes/header.php';
                     <svg class="w-4 h-4" :class="fetching ? 'animate-spin' : ''" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                     <span x-text="fetching ? 'Fetching Services...' : 'Fetch Services'"></span>
                 </button>
+                <a :href="providerId ? `/admin/provider-categories.php?provider_id=${providerId}` : '/admin/provider-categories.php'" class="px-4 py-2.5 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-800 text-xs font-bold">Import Categories</a>
                 <a href="/admin/providers.php" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">Manage Providers</a>
             </div>
         </div>

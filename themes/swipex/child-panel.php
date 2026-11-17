@@ -56,12 +56,26 @@ $displayCurr = Currency::getActiveDisplayCurrency($user);
 $displayCode = $displayCurr['code'];
 ?>
 
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-slate-800 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-indigo-700/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </div>
+        <div class="min-w-0">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Child Panels</h1>
+            <p class="text-xs text-slate-500">Launch your own branded white-label SMM storefront with custom domains &amp; margins.</p>
+        </div>
+    </div>
+    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm tabular-nums">
+        Setup Fee: <?= Currency::display($panelSetupFee, $displayCode, 2, true) ?>
+    </span>
+</div>
+
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
     <!-- Left: Create Child Panel + Panel Selector -->
     <div class="lg:col-span-4 space-y-6 min-w-0">
         <div class="swipex-card rounded-3xl p-6">
-            <h1 class="text-lg font-extrabold text-slate-900 mb-1">Your Child Panels</h1>
-            <p class="text-xs text-slate-500 mb-4">Launch isolated white-label SMM panels with custom domains and margins.</p>
+            <h2 class="text-base font-extrabold text-slate-900 mb-3">Your Child Panels</h2>
 
             <?php if (empty($panels)): ?>
                 <p class="text-xs text-slate-500 mb-4">You have not created a child panel yet.</p>
@@ -81,26 +95,26 @@ $displayCode = $displayCurr['code'];
             <?php endif; ?>
 
             <div class="border-t border-slate-100 pt-4">
-                <h2 class="text-sm font-extrabold text-slate-900 mb-3">Create New Child Panel</h2>
+                <h3 class="text-sm font-extrabold text-slate-900 mb-3">Create New Child Panel</h3>
                 <form method="POST" action="/user/child-panel.php" class="space-y-3">
                     <?= CSRF::field() ?>
                     <input type="hidden" name="action" value="create_panel">
                     <div>
                         <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Panel Brand Name</label>
-                        <input type="text" name="panel_name" required placeholder="My SMM Store" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:border-blue-600 text-xs outline-none bg-white">
+                        <input type="text" name="panel_name" required placeholder="My SMM Store" class="swipex-input px-3.5 py-2 text-xs">
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Custom Domain</label>
-                        <input type="text" name="domain" required placeholder="panel.yourdomain.com" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:border-blue-600 text-xs outline-none bg-white">
+                        <input type="text" name="domain" required placeholder="panel.yourdomain.com" class="swipex-input px-3.5 py-2 text-xs">
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Default Profit Margin (%)</label>
-                        <input type="number" step="0.5" min="0" max="500" name="profit_margin" value="25" required class="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:border-blue-600 text-xs outline-none bg-white">
+                        <input type="number" step="0.5" min="0" max="500" name="profit_margin" value="25" required class="swipex-input px-3.5 py-2 text-xs">
                     </div>
                     <div class="p-3 rounded-xl bg-blue-50 text-xs text-blue-900 border border-blue-100">
                         Setup Fee: <strong class="tabular-nums"><?= Currency::display($panelSetupFee, $displayCode, 2, true) ?></strong> (deducted from wallet if &gt; 0)
                     </div>
-                    <button type="submit" class="w-full py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow transition">
+                    <button type="submit" class="swipex-btn-primary w-full py-2.5 rounded-full font-bold text-xs">
                         Create Child Panel
                     </button>
                 </form>
@@ -187,7 +201,7 @@ $displayCode = $displayCurr['code'];
                         <input type="hidden" name="panel_id" value="<?= (int)$activePanel['id'] ?>">
                         <div class="sm:col-span-2">
                             <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Parent Service</label>
-                            <select name="parent_service_id" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+                            <select name="parent_service_id" class="swipex-input px-3 py-2 text-xs">
                                 <?php foreach ($allParentServices as $ps): ?>
                                     <option value="<?= (int)$ps['id'] ?>">#<?= (int)$ps['id'] ?> <?= Validator::e($ps['name']) ?> (Base: <?= Currency::displayRate((string)$ps['rate'], $displayCode, true) ?>)</option>
                                 <?php endforeach; ?>
@@ -195,9 +209,9 @@ $displayCode = $displayCurr['code'];
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Custom Rate / 1k (<?= Validator::e($displayCode) ?>)</label>
-                            <input type="number" step="0.0001" min="0.0001" name="custom_rate" required placeholder="Auto or custom" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs tabular-nums bg-white">
+                            <input type="number" step="0.0001" min="0.0001" name="custom_rate" required placeholder="Auto or custom" class="swipex-input px-3 py-2 text-xs tabular-nums">
                         </div>
-                        <button type="submit" class="py-2 px-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">Add / Update</button>
+                        <button type="submit" class="swipex-btn-primary py-2 px-4 rounded-full text-xs font-bold">Add / Update</button>
                     </form>
 
                     <div class="overflow-x-auto">
@@ -274,7 +288,7 @@ $displayCode = $displayCurr['code'];
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Panel Name</label>
-                                <input type="text" name="panel_name" value="<?= Validator::e($activePanel['panel_name']) ?>" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white">
+                                <input type="text" name="panel_name" value="<?= Validator::e($activePanel['panel_name']) ?>" required class="swipex-input px-3.5 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Primary Accent Color</label>
@@ -282,14 +296,14 @@ $displayCode = $displayCurr['code'];
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Profit Margin (%)</label>
-                                <input type="number" step="0.5" name="profit_margin" value="<?= Validator::e((string)$activePanel['profit_margin']) ?>" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white">
+                                <input type="number" step="0.5" name="profit_margin" value="<?= Validator::e((string)$activePanel['profit_margin']) ?>" class="swipex-input px-3.5 py-2.5 text-sm">
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Custom Logo</label>
                                 <input type="file" name="logo" accept="image/*" class="w-full text-xs">
                             </div>
                         </div>
-                        <button type="submit" class="px-6 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow transition">Save Branding &amp; Margin</button>
+                        <button type="submit" class="swipex-btn-primary px-6 py-2.5 rounded-full font-bold text-xs">Save Branding &amp; Margin</button>
                     </form>
                 </div>
             </div>

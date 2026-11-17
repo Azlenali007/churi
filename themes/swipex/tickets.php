@@ -27,18 +27,33 @@ if ($viewId > 0) {
 }
 ?>
 
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="min-w-0">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Support Center</h1>
+            <p class="text-xs text-slate-500">Reach our support team anytime regarding orders, payments, or API access.</p>
+        </div>
+    </div>
+    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm tabular-nums">
+        <?= count($tickets) ?> Tickets
+    </span>
+</div>
+
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
     <!-- Create Ticket + Ticket List -->
     <div class="lg:col-span-5 space-y-6 min-w-0">
         <div class="swipex-card rounded-3xl p-6">
-            <h1 class="text-lg font-extrabold text-slate-900 mb-4">Open New Support Ticket</h1>
+            <h2 class="text-lg font-extrabold text-slate-900 mb-4">Open New Support Ticket</h2>
             <form method="POST" action="/user/tickets.php" enctype="multipart/form-data" class="space-y-3">
                 <?= CSRF::field() ?>
                 <input type="hidden" name="action" value="create_ticket">
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Department</label>
-                        <select name="department" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-blue-600 text-xs font-semibold bg-white">
+                        <select name="department" class="swipex-input px-3 py-2 text-xs font-semibold">
                             <?php foreach (TICKET_DEPARTMENTS as $dk => $dl): ?>
                                 <option value="<?= $dk ?>"><?= Validator::e($dl) ?></option>
                             <?php endforeach; ?>
@@ -46,7 +61,7 @@ if ($viewId > 0) {
                     </div>
                     <div>
                         <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Priority</label>
-                        <select name="priority" class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-blue-600 text-xs font-semibold bg-white">
+                        <select name="priority" class="swipex-input px-3 py-2 text-xs font-semibold">
                             <option value="low">Low</option>
                             <option value="medium" selected>Medium</option>
                             <option value="high">High</option>
@@ -56,21 +71,21 @@ if ($viewId > 0) {
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Subject</label>
-                    <input type="text" name="subject" required placeholder="Brief summary of your issue" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:border-blue-600 text-sm bg-white">
+                    <input type="text" name="subject" required placeholder="Brief summary of your issue" class="swipex-input px-3.5 py-2 text-sm">
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Related Order ID (Optional)</label>
-                    <input type="number" name="order_id" placeholder="e.g. 1024" class="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:border-blue-600 text-sm bg-white">
+                    <input type="number" name="order_id" placeholder="e.g. 1024" class="swipex-input px-3.5 py-2 text-sm">
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Message</label>
-                    <textarea name="message" rows="4" required placeholder="Describe your request clearly..." class="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:border-blue-600 text-sm bg-white"></textarea>
+                    <textarea name="message" rows="4" required placeholder="Describe your request clearly..." class="swipex-input px-3.5 py-2 text-sm"></textarea>
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Attachment (Optional, Image/PDF)</label>
                     <input type="file" name="attachment" accept="image/*,application/pdf" class="w-full text-xs">
                 </div>
-                <button type="submit" class="w-full py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow transition">Submit Ticket</button>
+                <button type="submit" class="swipex-btn-primary w-full py-2.5 rounded-full font-bold text-xs">Submit Ticket</button>
             </form>
         </div>
 
@@ -142,10 +157,10 @@ if ($viewId > 0) {
                     <?= CSRF::field() ?>
                     <input type="hidden" name="action" value="reply_ticket">
                     <input type="hidden" name="ticket_id" value="<?= (int)$activeTicket['id'] ?>">
-                    <textarea name="message" rows="3" required placeholder="Write your reply..." class="w-full px-4 py-2.5 rounded-2xl border border-slate-200 text-sm outline-none focus:border-blue-600 bg-white"></textarea>
+                    <textarea name="message" rows="3" required placeholder="Write your reply..." class="swipex-input px-4 py-2.5 text-sm"></textarea>
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <input type="file" name="attachment" accept="image/*,application/pdf" class="text-xs">
-                        <button type="submit" class="px-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow transition">Send Reply</button>
+                        <button type="submit" class="swipex-btn-primary px-5 py-2.5 rounded-full font-bold text-xs">Send Reply</button>
                     </div>
                 </form>
                 <?php else: ?>

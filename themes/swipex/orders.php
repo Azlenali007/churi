@@ -30,11 +30,26 @@ $displayCode = $displayCurr['code'];
 $baseCode = Currency::getBaseCode();
 ?>
 
-<div class="swipex-card rounded-3xl p-5 sm:p-6 min-w-0 max-w-full overflow-hidden" x-data="{ detailOrder: null }">
-    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 min-w-0">
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+        </div>
         <div class="min-w-0">
-            <h1 class="text-xl font-extrabold text-slate-900">Order History</h1>
-            <p class="text-sm text-slate-500">Track status, start count, remaining quantity, and refill/cancel actions.</p>
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Order History</h1>
+            <p class="text-xs text-slate-500">Track status, start count, remains, and refill or cancel actions.</p>
+        </div>
+    </div>
+    <a href="/user/new-order.php" class="swipex-btn-primary px-4 py-2 rounded-full text-xs font-bold shrink-0">+ New Order</a>
+</div>
+
+<div class="swipex-card rounded-3xl p-5 sm:p-6 min-w-0 max-w-full overflow-hidden" x-data="{ detailOrder: null }">
+    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5 min-w-0">
+        <div class="flex flex-wrap gap-2">
+            <a href="/user/orders.php?status=all" class="px-3.5 py-1.5 rounded-full text-xs font-bold transition <?= $statusFilter === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-blue-50' ?>">All</a>
+            <?php foreach (ORDER_STATUSES as $key => $label): ?>
+                <a href="/user/orders.php?status=<?= urlencode($key) ?>" class="px-3.5 py-1.5 rounded-full text-xs font-bold transition <?= $statusFilter === $key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-blue-50' ?>"><?= Validator::e($label) ?></a>
+            <?php endforeach; ?>
         </div>
         <form method="GET" class="flex flex-wrap gap-2 w-full lg:w-auto">
             <input type="hidden" name="status" value="<?= Validator::e($statusFilter) ?>">
@@ -42,14 +57,6 @@ $baseCode = Currency::getBaseCode();
                    class="px-4 py-2 rounded-full border border-slate-200 text-sm outline-none focus:border-blue-600 flex-1 sm:w-60 min-w-0 bg-white">
             <button type="submit" class="px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shrink-0">Search</button>
         </form>
-    </div>
-
-    <!-- Status Filter Pills -->
-    <div class="flex flex-wrap gap-2 mb-6">
-        <a href="/user/orders.php?status=all" class="px-3.5 py-1.5 rounded-full text-xs font-bold transition <?= $statusFilter === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-blue-50' ?>">All</a>
-        <?php foreach (ORDER_STATUSES as $key => $label): ?>
-            <a href="/user/orders.php?status=<?= urlencode($key) ?>" class="px-3.5 py-1.5 rounded-full text-xs font-bold transition <?= $statusFilter === $key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-blue-50' ?>"><?= Validator::e($label) ?></a>
-        <?php endforeach; ?>
     </div>
 
     <?php if (empty($orders)): ?>

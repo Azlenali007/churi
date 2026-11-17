@@ -3,37 +3,203 @@
   display: none !important;
 }
 
+html {
+  overflow-x: clip;
+}
+
 body.swipex-body {
-  background: radial-gradient(circle at top right, rgba(37, 99, 235, 0.05), transparent 38%),
-              radial-gradient(circle at bottom left, rgba(124, 58, 237, 0.04), transparent 40%),
+  background: radial-gradient(circle at top right, rgba(37, 99, 235, 0.06), transparent 38%),
+              radial-gradient(circle at bottom left, rgba(124, 58, 237, 0.05), transparent 40%),
               #F8FAFC;
   font-family: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #0F172A;
+  overflow-x: clip;
+  min-height: 100vh;
 }
 
+/* ==========================================================================
+   Deterministic Layout & Navigation Visibility (Zero Tailwind/Alpine Flash)
+   Guarantees header, desktop sidebar, and mobile bottom dock stay visible
+   across reloads with zero post-paint disappearance.
+   ========================================================================== */
+.swipex-shell {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.swipex-main-wrap {
+  flex: 1 1 0%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.swipex-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.85);
+}
+
+.swipex-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: none;
+}
+
+.swipex-sidebar-backdrop.is-open {
+  display: block;
+}
+
+.swipex-sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+  width: 16.25rem;
+  background: #FFFFFF;
+  border-right: 1px solid rgba(226, 232, 240, 0.9);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transform: translateX(-100%);
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 12px 0 36px rgba(15, 23, 42, 0.08);
+}
+
+.swipex-sidebar.is-open {
+  transform: translateX(0);
+}
+
+.swipex-mobile-only {
+  display: inline-flex;
+}
+
+.swipex-mobile-flex {
+  display: flex;
+}
+
+.swipex-desktop-block {
+  display: none;
+}
+
+.swipex-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  background: rgba(255, 255, 255, 0.97);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 -10px 32px rgba(15, 23, 42, 0.08);
+  border-top: 1px solid rgba(226, 232, 240, 0.85);
+  border-top-left-radius: 1.5rem;
+  border-top-right-radius: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .swipex-sidebar-backdrop,
+  .swipex-sidebar-backdrop.is-open {
+    display: none !important;
+  }
+
+  .swipex-sidebar,
+  .swipex-sidebar.is-open {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    transform: none;
+    box-shadow: none;
+    z-index: 20;
+  }
+
+  .swipex-mobile-only,
+  .swipex-mobile-flex {
+    display: none !important;
+  }
+
+  .swipex-desktop-block {
+    display: block;
+  }
+
+  .swipex-bottom-nav {
+    display: none !important;
+  }
+}
+
+/* ==========================================================================
+   SwipeX Cards, Surfaces, Inputs & Interactive Elements
+   ========================================================================== */
 .swipex-card {
   background: #FFFFFF;
-  border: 1px solid rgba(226, 232, 240, 0.9);
+  border: 1px solid rgba(226, 232, 240, 0.92);
   box-shadow: 0 8px 28px rgba(15, 23, 42, 0.045);
 }
 
 .swipex-balance-card {
   background: #FFFFFF;
   border: 1px solid rgba(226, 232, 240, 0.95);
-  box-shadow: 0 12px 34px rgba(37, 99, 235, 0.07), 0 2px 8px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 12px 34px rgba(37, 99, 235, 0.08), 0 2px 8px rgba(15, 23, 42, 0.03);
 }
 
-.swipex-bottom-nav {
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.08);
-  border-top: 1px solid rgba(226, 232, 240, 0.85);
+.swipex-page-hero {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(239, 246, 255, 0.85) 100%);
+  border: 1px solid rgba(219, 234, 254, 0.95);
+  box-shadow: 0 8px 26px rgba(37, 99, 235, 0.05);
 }
 
+.swipex-input {
+  width: 100%;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.875rem;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.swipex-input:focus {
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.swipex-btn-primary {
+  background: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%);
+  color: #FFFFFF;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.25);
+  transition: transform 0.14s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.swipex-btn-primary:hover {
+  filter: brightness(1.04);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.32);
+}
+
+.swipex-btn-primary:active {
+  transform: scale(0.99);
+}
+
+/* ==========================================================================
+   SwipeX Center-Focus Action Card Carousel
+   ========================================================================== */
 .swipex-deck-stage {
   position: relative;
-  height: 310px;
+  height: 298px;
   perspective: 1100px;
   touch-action: pan-y;
   user-select: none;
@@ -41,18 +207,22 @@ body.swipex-body {
 
 .swipex-deck-card {
   position: absolute;
-  top: 14px;
+  top: 12px;
   left: 50%;
-  width: min(82vw, 315px);
-  height: 278px;
+  width: min(76vw, 290px);
+  height: 266px;
   border-radius: 28px;
   transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.32s ease, filter 0.32s ease;
   will-change: transform, opacity;
 }
 
 @media (min-width: 768px) {
+  .swipex-deck-stage {
+    height: 312px;
+  }
+
   .swipex-deck-card {
     width: 340px;
-    height: 284px;
+    height: 282px;
   }
 }

@@ -46,9 +46,419 @@ class CategoryMapper
                     $pdo->exec("ALTER TABLE `provider_import_logs` ADD COLUMN `operation_type` VARCHAR(60) NOT NULL AFTER `admin_id`");
                 }
             }
+
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `provider_category_mappings` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `provider_id` INT UNSIGNED NOT NULL,
+                `external_category_id` VARCHAR(100) NULL,
+                `external_category_name` VARCHAR(200) NOT NULL,
+                `external_category_key` VARCHAR(200) NOT NULL,
+                `platform_category_id` INT UNSIGNED NOT NULL,
+                `service_count` INT UNSIGNED NOT NULL DEFAULT 0,
+                `mapping_mode` ENUM('mapped','created') NOT NULL DEFAULT 'mapped',
+                `last_synced_at` DATETIME NULL,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk_pcm_provider_key` (`provider_id`, `external_category_key`),
+                KEY `idx_pcm_platform_cat` (`platform_category_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         } catch (Throwable $e) {
             Logger::errorFile('CategoryMapper::ensureSchema error: ' . $e->getMessage());
         }
+    }
+
+    public static function getCategoryCacheFilePath(int $providerId): string
+    {
+        return self::CACHE_DIR . '/provider_categories_' . $providerId . '.json';
+    }
+
+    public static function makeExternalCategoryKey(?string $extCategoryId, string $catName): string
+    {
+        $extId = trim((string)$extCategoryId);
+        if ($extId !== '') {
+            return substr('id:' . $extId, 0, 195);
+        }
+        $norm = mb_strtolower(trim($catName), 'UTF-8');
+        $key = 'name:' . $norm;
+        if (strlen($key) > 195) {
+            return 'hash:' . sha1($norm);
+        }
+        return $key;
+    }
+
+    /**
+     * Fetches original provider categories (with optional upstream category ID & service count)
+     * from provider API WITHOUT importing or creating any DB categories or services.
+     */
+    public static function fetchAndCacheCategories(array $provider, ?int $adminId = null): array
+    {
+        self::ensureSchema();
+        $apiRes = ProviderAPI::getServices($provider);
+        if (!$apiRes['ok']) {
+            return ['ok' => false, 'error' => $apiRes['error'] ?? 'Failed to fetch categories from provider.'];
+        }
+
+        $items = $apiRes['data'];
+        if (!is_array($items) || empty($items)) {
+            return ['ok' => false, 'error' => 'Provider returned an empty or invalid catalog response.'];
+        }
+
+        if (!is_dir(self::CACHE_DIR)) {
+            @mkdir(self::CACHE_DIR, 0755, true);
+        }
+
+        $providerId = (int)$provider['id'];
+        $catMap = [];
+        $uncategorizedCount = 0;
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $rawName = trim((string)($item['category'] ?? ($item['category_name'] ?? '')));
+            if ($rawName === '') {
+                $uncategorizedCount++;
+                continue;
+            }
+            $rawName = Validator::str($rawName, 195);
+
+            $rawCatId = null;
+            if (isset($item['category_id']) && trim((string)$item['category_id']) !== '') {
+                $rawCatId = Validator::str((string)$item['category_id'], 95);
+            } elseif (isset($item['cat_id']) && trim((string)$item['cat_id']) !== '') {
+                $rawCatId = Validator::str((string)$item['cat_id'], 95);
+            }
+
+            $key = self::makeExternalCategoryKey($rawCatId, $rawName);
+            if (!isset($catMap[$key])) {
+                $catMap[$key] = [
+                    'external_key'           => $key,
+                    'external_category_id'   => $rawCatId,
+                    'external_category_name' => $rawName,
+                    'service_count'          => 0,
+                    'platform'               => Helpers::detectPlatform($rawName),
+                ];
+            }
+            $catMap[$key]['service_count']++;
+        }
+
+        $categories = array_values($catMap);
+        $payload = [
+            'provider_id'         => $providerId,
+            'provider_name'       => (string)$provider['name'],
+            'fetched_at'          => date('Y-m-d H:i:s'),
+            'total_categories'    => count($categories),
+            'total_services_seen' => count($items),
+            'uncategorized_count' => $uncategorizedCount,
+            'categories'          => $categories,
+        ];
+
+        $written = @file_put_contents(self::getCategoryCacheFilePath($providerId), json_encode($payload, JSON_UNESCAPED_UNICODE));
+        if ($written === false) {
+            return ['ok' => false, 'error' => 'Could not save fetched category cache to storage/cache. Check folder permissions.'];
+        }
+
+        self::logImportOperation($providerId, $adminId, 'fetch_categories', count($categories), 0, 0, 0, 0, 0, [
+            'provider_name'       => $provider['name'],
+            'total_categories'    => count($categories),
+            'total_services_seen' => count($items),
+            'uncategorized_count' => $uncategorizedCount,
+        ]);
+
+        return [
+            'ok'                  => true,
+            'fetched_at'          => $payload['fetched_at'],
+            'total_categories'    => count($categories),
+            'total_services_seen' => count($items),
+            'uncategorized_count' => $uncategorizedCount,
+        ];
+    }
+
+    public static function loadCachedCategories(int $providerId): ?array
+    {
+        $path = self::getCategoryCacheFilePath($providerId);
+        if (!is_file($path)) {
+            return null;
+        }
+        $raw = @file_get_contents($path);
+        if (!$raw) {
+            return null;
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !isset($data['categories']) || !is_array($data['categories'])) {
+            return null;
+        }
+        return $data;
+    }
+
+    /**
+     * Enriches cached upstream categories with existing platform category matches & saved mappings.
+     */
+    public static function getEnrichedCategories(int $providerId, string $search = '', string $statusFilter = 'all'): array
+    {
+        self::ensureSchema();
+        $cache = self::loadCachedCategories($providerId);
+        if (!$cache) {
+            return ['ok' => false, 'error' => 'No fetched categories found. Click "Fetch Categories" first.'];
+        }
+
+        $platformCats = Database::fetchAll("SELECT id, name, slug, platform FROM categories ORDER BY sort_order ASC, id ASC");
+        $catById = [];
+        $catByLower = [];
+        $catBySlug = [];
+        foreach ($platformCats as $pc) {
+            $catById[(int)$pc['id']] = $pc;
+            $catByLower[mb_strtolower(trim((string)$pc['name']), 'UTF-8')] = $pc;
+            $catBySlug[(string)$pc['slug']] = $pc;
+        }
+
+        $savedRows = Database::fetchAll(
+            "SELECT pcm.*, c.name AS platform_category_name
+             FROM provider_category_mappings pcm
+             JOIN categories c ON c.id = pcm.platform_category_id
+             WHERE pcm.provider_id = ?",
+            [$providerId]
+        );
+        $savedByKey = [];
+        $savedByName = [];
+        foreach ($savedRows as $sr) {
+            $savedByKey[(string)$sr['external_category_key']] = $sr;
+            $savedByName[mb_strtolower(trim((string)$sr['external_category_name']), 'UTF-8')] = $sr;
+        }
+
+        $counts = ['all' => 0, 'mapped' => 0, 'auto_match' => 0, 'new' => 0];
+        $enriched = [];
+        $q = mb_strtolower(trim($search), 'UTF-8');
+
+        foreach ($cache['categories'] as $cat) {
+            $key = (string)$cat['external_key'];
+            $rawName = (string)$cat['external_category_name'];
+            $lowerName = mb_strtolower(trim($rawName), 'UTF-8');
+            $slugName = Validator::slug($rawName);
+
+            $saved = $savedByKey[$key] ?? ($savedByName[$lowerName] ?? null);
+            $matched = $catByLower[$lowerName] ?? ($catBySlug[$slugName] ?? null);
+
+            $mappingStatus = 'new';
+            $mappedCatId = 0;
+            $mappedCatName = null;
+            $mappingMode = null;
+            $lastSyncedAt = null;
+            $suggestedTargetId = 0;
+
+            if ($saved && isset($catById[(int)$saved['platform_category_id']])) {
+                $mappingStatus = 'mapped';
+                $mappedCatId = (int)$saved['platform_category_id'];
+                $mappedCatName = (string)$saved['platform_category_name'];
+                $mappingMode = (string)$saved['mapping_mode'];
+                $lastSyncedAt = $saved['last_synced_at'];
+                $suggestedTargetId = $mappedCatId;
+                $counts['mapped']++;
+            } elseif ($matched) {
+                $mappingStatus = 'auto_match';
+                $mappedCatId = (int)$matched['id'];
+                $mappedCatName = (string)$matched['name'];
+                $suggestedTargetId = $mappedCatId;
+                $counts['auto_match']++;
+            } else {
+                $counts['new']++;
+            }
+            $counts['all']++;
+
+            if ($statusFilter === 'mapped' && $mappingStatus !== 'mapped') {
+                continue;
+            }
+            if ($statusFilter === 'unmapped' && $mappingStatus === 'mapped') {
+                continue;
+            }
+            if ($statusFilter === 'new' && $mappingStatus !== 'new') {
+                continue;
+            }
+            if ($q !== '') {
+                $hayName = mb_strtolower($rawName, 'UTF-8');
+                $hayId = mb_strtolower((string)($cat['external_category_id'] ?? ''), 'UTF-8');
+                $hayMapped = mb_strtolower((string)($mappedCatName ?? ''), 'UTF-8');
+                if (!str_contains($hayName, $q) && !str_contains($hayId, $q) && !str_contains($hayMapped, $q)) {
+                    continue;
+                }
+            }
+
+            $enriched[] = [
+                'external_key'           => $key,
+                'external_category_id'   => $cat['external_category_id'],
+                'external_category_name' => $rawName,
+                'service_count'          => (int)$cat['service_count'],
+                'platform'               => (string)$cat['platform'],
+                'mapping_status'         => $mappingStatus,
+                'mapped_category_id'     => $mappedCatId,
+                'mapped_category_name'   => $mappedCatName,
+                'suggested_target_id'    => $suggestedTargetId,
+                'mapping_mode'           => $mappingMode,
+                'last_synced_at'         => $lastSyncedAt,
+            ];
+        }
+
+        return [
+            'ok'                  => true,
+            'provider_id'         => $providerId,
+            'provider_name'       => $cache['provider_name'] ?? '',
+            'fetched_at'          => $cache['fetched_at'] ?? '',
+            'uncategorized_count' => (int)($cache['uncategorized_count'] ?? 0),
+            'total_services_seen' => (int)($cache['total_services_seen'] ?? 0),
+            'counts'              => $counts,
+            'items'               => $enriched,
+        ];
+    }
+
+    /**
+     * Imports or maps ONLY the selected provider categories (never imports services).
+     * $selections: array of ['external_key' => string, 'target_category_id' => int] (0 = create missing without duplicates).
+     * $existingMode: 'skip' | 'update'
+     */
+    public static function importSelectedCategories(
+        array $provider,
+        array $selections,
+        string $existingMode = 'skip',
+        ?int $adminId = null
+    ): array {
+        self::ensureSchema();
+        $providerId = (int)$provider['id'];
+        $cache = self::loadCachedCategories($providerId);
+        if (!$cache) {
+            return ['ok' => false, 'error' => 'Cached provider categories not found. Please click Fetch Categories first.'];
+        }
+        if (empty($selections)) {
+            return ['ok' => false, 'error' => 'Please select at least one category to import.'];
+        }
+
+        $existingMode = $existingMode === 'update' ? 'update' : 'skip';
+        $cachedByKey = [];
+        foreach ($cache['categories'] as $c) {
+            $cachedByKey[(string)$c['external_key']] = $c;
+        }
+
+        $stats = [
+            'selected_total'     => count($selections),
+            'imported'           => 0,
+            'updated'            => 0,
+            'skipped'            => 0,
+            'failed'             => 0,
+            'categories_created' => 0,
+            'outcomes'           => [],
+        ];
+
+        $createdCatIdsThisBatch = [];
+
+        foreach ($selections as $sel) {
+            if (!is_array($sel)) {
+                $stats['failed']++;
+                continue;
+            }
+            $extKey = trim((string)($sel['external_key'] ?? ''));
+            $targetCatId = (int)($sel['target_category_id'] ?? 0);
+
+            if ($extKey === '' || !isset($cachedByKey[$extKey])) {
+                $stats['failed']++;
+                $stats['outcomes'][] = ['external_key' => $extKey, 'status' => 'failed', 'reason' => 'Category not found in fetched cache.'];
+                continue;
+            }
+
+            $cat = $cachedByKey[$extKey];
+            $rawName = (string)$cat['external_category_name'];
+            $extCatId = $cat['external_category_id'] !== null && $cat['external_category_id'] !== ''
+                ? (string)$cat['external_category_id']
+                : null;
+            $svcCount = (int)$cat['service_count'];
+
+            try {
+                $existingMap = Database::fetch(
+                    "SELECT id, platform_category_id FROM provider_category_mappings WHERE provider_id = ? AND external_category_key = ? LIMIT 1",
+                    [$providerId, $extKey]
+                );
+
+                if ($existingMap && $existingMode === 'skip') {
+                    $stats['skipped']++;
+                    $stats['outcomes'][] = ['name' => $rawName, 'status' => 'skipped', 'reason' => 'Mapping already exists'];
+                    continue;
+                }
+
+                if ($targetCatId > 0) {
+                    $targetCat = Database::fetch("SELECT id, name FROM categories WHERE id = ? LIMIT 1", [$targetCatId]);
+                    if (!$targetCat) {
+                        $stats['failed']++;
+                        $stats['outcomes'][] = ['name' => $rawName, 'status' => 'failed', 'reason' => 'Selected platform category does not exist'];
+                        continue;
+                    }
+                    $platformCatId = (int)$targetCat['id'];
+                    $platformCatName = (string)$targetCat['name'];
+                    $modeLabel = 'mapped';
+                } else {
+                    $resolved = self::resolveOrCreateCategory($rawName);
+                    $platformCatId = (int)$resolved['id'];
+                    $platformCatName = (string)Database::fetchColumn("SELECT name FROM categories WHERE id = ? LIMIT 1", [$platformCatId]);
+                    $modeLabel = $resolved['created'] ? 'created' : 'mapped';
+                    if ($resolved['created'] && !isset($createdCatIdsThisBatch[$platformCatId])) {
+                        $createdCatIdsThisBatch[$platformCatId] = true;
+                        $stats['categories_created']++;
+                    }
+                }
+
+                Database::execute(
+                    "INSERT INTO provider_category_mappings
+                     (provider_id, external_category_id, external_category_name, external_category_key, platform_category_id, service_count, mapping_mode, last_synced_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+                     ON DUPLICATE KEY UPDATE
+                       external_category_id = VALUES(external_category_id),
+                       external_category_name = VALUES(external_category_name),
+                       platform_category_id = VALUES(platform_category_id),
+                       service_count = VALUES(service_count),
+                       mapping_mode = VALUES(mapping_mode),
+                       last_synced_at = NOW()",
+                    [$providerId, $extCatId, $rawName, $extKey, $platformCatId, $svcCount, $modeLabel]
+                );
+
+                if ($existingMap) {
+                    $stats['updated']++;
+                    $stats['outcomes'][] = ['name' => $rawName, 'status' => 'updated', 'platform_category' => $platformCatName];
+                } else {
+                    $stats['imported']++;
+                    $stats['outcomes'][] = ['name' => $rawName, 'status' => 'imported', 'platform_category' => $platformCatName];
+                }
+            } catch (Throwable $e) {
+                $stats['failed']++;
+                $stats['outcomes'][] = ['name' => $rawName, 'status' => 'failed', 'reason' => $e->getMessage()];
+            }
+        }
+
+        self::logImportOperation(
+            $providerId,
+            $adminId,
+            'import_categories',
+            $stats['selected_total'],
+            $stats['imported'],
+            $stats['updated'],
+            $stats['skipped'],
+            $stats['failed'],
+            $stats['categories_created'],
+            [
+                'existing_mode' => $existingMode,
+                'outcomes'      => array_slice($stats['outcomes'], 0, 50),
+            ]
+        );
+
+        if ($adminId !== null) {
+            Logger::activity(
+                'admin',
+                $adminId,
+                'provider.import_categories',
+                'provider',
+                (string)$providerId,
+                "Imported={$stats['imported']}, Updated={$stats['updated']}, Skipped={$stats['skipped']}, Failed={$stats['failed']}, CreatedCats={$stats['categories_created']}"
+            );
+        }
+
+        return ['ok' => true, 'stats' => $stats];
     }
 
     public static function getCacheFilePath(int $providerId): string
@@ -174,13 +584,27 @@ class CategoryMapper
             return ['ok' => false, 'error' => 'No fetched catalog found. Click "Fetch Services" first.'];
         }
 
-        // Load existing categories for instant lookup
+        // Load existing categories & explicit provider category mappings for instant lookup
         $catRows = Database::fetchAll("SELECT id, name, slug, platform FROM categories");
+        $catById = [];
         $catByLower = [];
         $catBySlug = [];
         foreach ($catRows as $cr) {
+            $catById[(int)$cr['id']] = $cr;
             $catByLower[mb_strtolower(trim((string)$cr['name']))] = $cr;
             $catBySlug[(string)$cr['slug']] = $cr;
+        }
+
+        $pcmByName = [];
+        $pcmRows = Database::fetchAll(
+            "SELECT external_category_name, platform_category_id FROM provider_category_mappings WHERE provider_id = ?",
+            [$providerId]
+        );
+        foreach ($pcmRows as $pr) {
+            $pidCat = (int)$pr['platform_category_id'];
+            if (isset($catById[$pidCat])) {
+                $pcmByName[mb_strtolower(trim((string)$pr['external_category_name']))] = $catById[$pidCat];
+            }
         }
 
         // Load existing imported services for this provider
@@ -218,7 +642,7 @@ class CategoryMapper
             $lowerCat = mb_strtolower(trim($rawCat));
             $slugCat = Validator::slug($rawCat);
 
-            $mappedCat = $catByLower[$lowerCat] ?? ($catBySlug[$slugCat] ?? null);
+            $mappedCat = $pcmByName[$lowerCat] ?? ($catByLower[$lowerCat] ?? ($catBySlug[$slugCat] ?? null));
             $mappedCategoryName = $mappedCat ? (string)$mappedCat['name'] : $rawCat;
             $mappedCategoryId = $mappedCat ? (int)$mappedCat['id'] : 0;
             $willCreateCategory = !$mappedCat && !empty($item['has_raw_category']);
@@ -515,7 +939,7 @@ class CategoryMapper
             $item = $catalogByExt[$extId];
             $stats['processed']++;
 
-            // Resolve category
+            // Resolve category (saved provider_category_mappings takes priority over auto-create)
             $rawCat = !empty($item['has_raw_category']) ? (string)$item['raw_category'] : '';
             if ($forcedCat) {
                 $categoryId = (int)$forcedCat['id'];
@@ -524,12 +948,25 @@ class CategoryMapper
                 $categoryId = $fallbackCategoryId;
                 $platform = Helpers::detectPlatform((string)$item['name']);
             } else {
-                $resolved = self::resolveOrCreateCategory($rawCat);
-                $categoryId = (int)$resolved['id'];
-                $platform = (string)$resolved['platform'];
-                if ($resolved['created'] && !isset($createdCatNames[$categoryId])) {
-                    $createdCatNames[$categoryId] = true;
-                    $stats['categories_created']++;
+                $mappedRow = Database::fetch(
+                    "SELECT c.id, c.platform
+                     FROM provider_category_mappings pcm
+                     JOIN categories c ON c.id = pcm.platform_category_id
+                     WHERE pcm.provider_id = ? AND LOWER(pcm.external_category_name) = LOWER(?)
+                     LIMIT 1",
+                    [$providerId, $rawCat]
+                );
+                if ($mappedRow) {
+                    $categoryId = (int)$mappedRow['id'];
+                    $platform = (string)$mappedRow['platform'];
+                } else {
+                    $resolved = self::resolveOrCreateCategory($rawCat);
+                    $categoryId = (int)$resolved['id'];
+                    $platform = (string)$resolved['platform'];
+                    if ($resolved['created'] && !isset($createdCatNames[$categoryId])) {
+                        $createdCatNames[$categoryId] = true;
+                        $stats['categories_created']++;
+                    }
                 }
             }
 

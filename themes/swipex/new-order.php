@@ -65,6 +65,26 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
 
 <?php require APP_ROOT . '/includes/flash_sale_banner.php'; ?>
 
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <div class="min-w-0">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Place New Order</h1>
+            <p class="text-xs text-slate-500">Pick a service, enter your link, and watch live rate calculation.</p>
+        </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+        <span class="px-3 py-1 rounded-full bg-white text-slate-700 text-xs font-extrabold border border-slate-200 shadow-sm tabular-nums">
+            Wallet: <span class="text-blue-600"><?= Currency::display((string)$user['wallet_balance'], null, 2, true) ?></span>
+        </span>
+        <span class="px-3 py-1 rounded-full bg-blue-600 text-white text-xs font-extrabold">
+            <?= Validator::e($currencySymbol . ' ' . $displayCode) ?>
+        </span>
+    </div>
+</div>
+
 <div x-data="{
     categories: <?= Validator::e(json_encode($categories)) ?>,
     subcategories: <?= Validator::e(json_encode($subcategories)) ?>,
@@ -185,30 +205,20 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
     <?php else: ?>
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <!-- Order Form -->
-        <div class="lg:col-span-7 swipex-card rounded-3xl p-6 sm:p-7 min-w-0">
-            <div class="flex items-center justify-between gap-3 mb-5">
-                <div>
-                    <h1 class="text-xl font-extrabold text-slate-900">Place New Order</h1>
-                    <p class="text-xs text-slate-500 mt-0.5">Select a service, enter your link, and launch instantly.</p>
-                </div>
-                <span class="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-extrabold border border-blue-200/70">
-                    <?= Validator::e($currencySymbol . ' ' . $displayCode) ?>
-                </span>
-            </div>
-
+        <div class="lg:col-span-7 swipex-card rounded-3xl p-5 sm:p-7 min-w-0">
             <form method="POST" action="/user/new-order.php" class="space-y-4">
                 <?= CSRF::field() ?>
 
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Search Service (Optional)</label>
                     <input type="text" x-model="searchQuery" @input="pickFirstService()" placeholder="Search by service name or ID..."
-                           class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-600 outline-none text-sm bg-white">
+                           class="swipex-input px-4 py-2.5 text-sm">
                 </div>
 
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Category</label>
                     <select x-model="categoryId" @change="subcategoryId = 0; searchQuery = ''; pickFirstService()"
-                            class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-600 outline-none text-sm font-semibold bg-white">
+                            class="swipex-input px-4 py-2.5 text-sm font-semibold">
                         <template x-for="c in filteredCategories" :key="c.id">
                             <option :value="c.id" x-text="c.name"></option>
                         </template>
@@ -218,7 +228,7 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
                 <div x-show="filteredSubcategories.length > 0" x-cloak>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Subcategory</label>
                     <select x-model="subcategoryId" @change="pickFirstService()"
-                            class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-600 outline-none text-sm font-semibold bg-white">
+                            class="swipex-input px-4 py-2.5 text-sm font-semibold">
                         <option value="0">All Subcategories</option>
                         <template x-for="sc in filteredSubcategories" :key="sc.id">
                             <option :value="sc.id" x-text="sc.name"></option>
@@ -229,7 +239,7 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Service</label>
                     <select name="service_id" x-model="serviceId" @change="if(currentService) quantity = currentService.min_qty" required
-                            class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-600 outline-none text-sm font-semibold bg-white">
+                            class="swipex-input px-4 py-2.5 text-sm font-semibold">
                         <template x-for="s in filteredServices" :key="s.id">
                             <option :value="s.id" x-text="`#${s.id} — ${s.name} (<?= Validator::e($currencySymbol) ?>${fmtRate(s.effective_rate)} <?= Validator::e($displayCode) ?>/1k)${s.on_sale ? ' 🔥 SALE' : ''}`"></option>
                         </template>
@@ -239,14 +249,14 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Target Link / Username</label>
                     <input type="text" name="link" x-model="link" required placeholder="https://instagram.com/p/... or @username"
-                           class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-600 outline-none text-sm bg-white">
+                           class="swipex-input px-4 py-2.5 text-sm">
                 </div>
 
                 <template x-if="currentService && currentService.type === 'custom_comments'">
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Custom Comments (1 per line)</label>
                         <textarea name="comments" x-model="comments" rows="4" required placeholder="Enter one comment per line..."
-                                  class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-600 outline-none text-sm bg-white"></textarea>
+                                  class="swipex-input px-4 py-2.5 text-sm"></textarea>
                     </div>
                 </template>
 
@@ -256,7 +266,7 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
                            :min="currentService ? currentService.min_qty : 1"
                            :max="currentService ? currentService.max_qty : 1000000"
                            required
-                           class="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-blue-600 outline-none text-sm font-bold bg-white tabular-nums">
+                           class="swipex-input px-4 py-2.5 text-sm font-bold tabular-nums">
                     <div class="text-xs text-slate-500 mt-1" x-show="currentService">
                         Min: <strong x-text="currentService?.min_qty"></strong> &mdash; Max: <strong x-text="currentService?.max_qty"></strong>
                     </div>
@@ -271,11 +281,11 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
                         <div x-show="useDrip" class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Runs</label>
-                                <input type="number" name="runs" x-model="runs" min="2" max="100" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+                                <input type="number" name="runs" x-model="runs" min="2" max="100" class="swipex-input px-3 py-2 text-xs">
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Interval (min)</label>
-                                <input type="number" name="interval" x-model="interval" min="5" max="1440" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+                                <input type="number" name="interval" x-model="interval" min="5" max="1440" class="swipex-input px-3 py-2 text-xs">
                             </div>
                         </div>
                     </div>
@@ -291,7 +301,7 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
                     <div class="text-2xl font-extrabold text-blue-600 tabular-nums"><?= Validator::e($currencySymbol) ?><span x-text="totalCharge">0.00</span> <span class="text-xs font-bold text-blue-500"><?= Validator::e($displayCode) ?></span></div>
                 </div>
 
-                <button type="submit" class="w-full py-3.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-600/25 transition">
+                <button type="submit" class="swipex-btn-primary w-full py-3.5 rounded-full font-bold text-sm">
                     Submit Order
                 </button>
             </form>

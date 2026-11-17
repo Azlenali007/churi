@@ -40,16 +40,25 @@ foreach ($services as $svc) {
 }
 ?>
 
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        </div>
+        <div class="min-w-0">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Service Directory</h1>
+            <p class="text-xs text-slate-500">Live rates per 1,000, min/max limits, and refill/cancel guarantees.</p>
+        </div>
+    </div>
+    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm shrink-0">
+        Rates in <?= Validator::e($activeCurr['symbol'] . ' ' . $activeCurr['code']) ?>
+    </span>
+</div>
+
 <div class="swipex-card rounded-3xl p-5 sm:p-6 min-w-0 max-w-full overflow-hidden" x-data="{ descModal: null }">
     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6 min-w-0">
-        <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-2">
-                <h1 class="text-xl font-extrabold text-slate-900">Service Directory</h1>
-                <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-extrabold border border-blue-200/70">
-                    Rates in <?= Validator::e($activeCurr['symbol'] . ' ' . $activeCurr['code']) ?>
-                </span>
-            </div>
-            <p class="text-sm text-slate-500">All available SMM services with live rates per 1,000, limits, and refill/cancel support.</p>
+        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">
+            <?= count($services) ?> Active Services
         </div>
         <form method="GET" action="/user/services.php" class="w-full lg:w-auto flex flex-col sm:flex-row flex-wrap gap-2 min-w-0">
             <input type="text" name="search" value="<?= Validator::e($search) ?>" placeholder="Search ID or name..."
@@ -60,7 +69,7 @@ foreach ($services as $svc) {
                     <option value="<?= (int)$c['id'] ?>" <?= $categoryId === (int)$c['id'] ? 'selected' : '' ?>><?= Validator::e($c['name']) ?></option>
                 <?php endforeach; ?>
             </select>
-            <button type="submit" class="px-5 py-2 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-sm shrink-0">Filter</button>
+            <button type="submit" class="swipex-btn-primary px-5 py-2 rounded-full text-sm font-bold shrink-0">Filter</button>
         </form>
     </div>
 
@@ -70,7 +79,7 @@ foreach ($services as $svc) {
         <div class="space-y-7 min-w-0">
             <?php foreach ($grouped as $catName => $bundle): ?>
             <div class="min-w-0">
-                <div class="flex items-start sm:items-center gap-3 px-4 py-3 rounded-2xl bg-slate-900 text-white mb-3 min-w-0">
+                <div class="flex items-start sm:items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-sm mb-3 min-w-0">
                     <span class="shrink-0"><?= Helpers::platformIcon((string)$bundle['platform'], 'w-7 h-7') ?></span>
                     <h2 class="font-bold text-sm sm:text-base min-w-0 flex-1 break-words [overflow-wrap:anywhere] leading-snug"><?= Validator::e($catName) ?></h2>
                 </div>

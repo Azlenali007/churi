@@ -13,37 +13,40 @@ $activeCurr = Currency::getActiveDisplayCurrency($user);
 $headerSiteName = Helpers::setting('site_name', 'SMM PRO');
 $headerTagline = Helpers::setting('site_tagline', 'Grow Your Social Media');
 ?>
-<header class="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-100 px-3.5 sm:px-7 h-16 flex items-center justify-between gap-2 sm:gap-4">
-    <div class="flex items-center gap-2.5 flex-1 min-w-0">
-        <button type="button" @click="sidebarOpen = true" aria-label="Open menu" class="hidden sm:inline-flex lg:hidden p-2 rounded-xl text-slate-700 hover:bg-slate-100 shrink-0">
+<header class="swipex-topbar px-3 sm:px-7 h-16 gap-2 sm:gap-4">
+    <div class="flex items-center gap-2 sm:gap-2.5 flex-1 min-w-0">
+        <!-- Mobile Drawer Button (always accessible below 1024px) -->
+        <button type="button" @click="sidebarOpen = true" aria-label="Open menu"
+                class="swipex-mobile-only items-center justify-center w-8 h-8 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition shrink-0">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
 
-        <!-- Clean Brand Header matching SwipeX Reference -->
-        <a href="/user/dashboard.php" class="flex lg:hidden items-center gap-2.5 min-w-0">
-            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-sm shrink-0">
+        <!-- Mobile Brand Lockup matching SwipeX Reference -->
+        <a href="/user/dashboard.php" class="swipex-mobile-flex items-center gap-2 min-w-0">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-sm shadow-blue-600/20 shrink-0">
                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
             </div>
             <div class="min-w-0">
-                <div class="text-sm sm:text-base font-extrabold text-slate-900 leading-none truncate"><?= Validator::e($headerSiteName) ?></div>
+                <div class="text-sm font-extrabold text-slate-900 leading-none truncate"><?= Validator::e($headerSiteName) ?></div>
                 <div class="text-[10px] text-slate-400 truncate mt-0.5"><?= Validator::e($headerTagline) ?></div>
             </div>
         </a>
 
-        <form action="/user/services.php" method="GET" class="relative w-full max-w-md hidden lg:block">
+        <!-- Desktop Service Search -->
+        <form action="/user/services.php" method="GET" class="swipex-desktop-block relative w-full max-w-md">
             <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
             <input type="text" name="search" value="<?= Validator::e($_GET['search'] ?? '') ?>"
                    placeholder="Search services..."
-                   class="w-full pl-10 pr-4 py-2 rounded-full bg-slate-100/80 border border-slate-200/70 focus:bg-white focus:border-blue-500 outline-none text-sm text-slate-800 placeholder-slate-400 transition">
+                   class="w-full pl-10 pr-4 py-2 rounded-full bg-slate-100/85 border border-slate-200/75 focus:bg-white focus:border-blue-500 outline-none text-sm text-slate-800 placeholder-slate-400 transition">
         </form>
     </div>
 
     <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-        <!-- Outlined White Currency Pill (₹ INR v) matching SwipeX reference -->
+        <!-- Outlined White Currency Pill (₹ INR ▾) matching SwipeX reference -->
         <div class="relative" x-data="{ openCurr: false, switching: false }">
             <button type="button" @click="openCurr = !openCurr"
                     aria-label="Select display currency"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-xs font-extrabold shadow-sm transition">
+                    class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-xs font-extrabold shadow-sm transition whitespace-nowrap">
                 <span class="text-blue-600"><?= Validator::e($activeCurr['symbol']) ?></span>
                 <span><?= Validator::e($activeCurr['code']) ?></span>
                 <svg class="w-3 h-3 text-slate-500 transition-transform" :class="openCurr ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
@@ -81,7 +84,7 @@ $headerTagline = Helpers::setting('site_tagline', 'Grow Your Social Media');
         <!-- Circular Notification Bell -->
         <div class="relative" x-data="{ open: false }">
             <button type="button" @click="open = !open" aria-label="Notifications"
-                    class="relative w-9 h-9 rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200/70 text-slate-700 flex items-center justify-center transition">
+                    class="relative w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200/75 text-slate-700 flex items-center justify-center transition">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                 <?php if ($unreadCount > 0): ?>
                 <span class="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white"><?= $unreadCount ?></span>
@@ -107,16 +110,16 @@ $headerTagline = Helpers::setting('site_tagline', 'Grow Your Social Media');
             </div>
         </div>
 
-        <!-- Support Shortcut Icon (Matches SwipeX Reference) -->
+        <!-- Support Shortcut Icon -->
         <a href="/user/tickets.php" aria-label="Support Tickets"
-           class="w-9 h-9 rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200/70 text-slate-700 flex items-center justify-center transition">
+           class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-50 hover:bg-slate-100 border border-slate-200/75 text-slate-700 flex items-center justify-center transition">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/></svg>
         </a>
 
         <!-- Solid Royal-Blue Avatar Circle -->
         <div class="relative" x-data="{ open: false }">
-            <button type="button" @click="open = !open" class="flex items-center gap-2 p-0.5 rounded-full hover:bg-slate-100 transition">
-                <div class="w-9 h-9 rounded-full bg-blue-600 text-white font-bold text-sm flex items-center justify-center shadow-md shadow-blue-600/25">
+            <button type="button" @click="open = !open" aria-label="Account Menu" class="flex items-center gap-2 p-0.5 rounded-full hover:bg-slate-100 transition">
+                <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-blue-600 text-white font-bold text-sm flex items-center justify-center shadow-md shadow-blue-600/25">
                     <?= Validator::e($initials) ?>
                 </div>
             </button>
@@ -137,7 +140,7 @@ $headerTagline = Helpers::setting('site_tagline', 'Grow Your Social Media');
     </div>
 </header>
 
-<main class="flex-1 px-4 py-5 sm:p-6 lg:p-8 pb-28 lg:pb-8 max-w-[1380px] w-full mx-auto">
+<main class="flex-1 px-4 py-5 sm:p-6 lg:p-8 pb-28 lg:pb-10 max-w-[1380px] w-full mx-auto">
     <?php foreach (Helpers::getFlashes() as $f): ?>
     <div class="mb-5 p-4 rounded-2xl text-sm font-semibold border <?= $f['type'] === 'error' ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700' ?>">
         <?= Validator::e($f['message']) ?>

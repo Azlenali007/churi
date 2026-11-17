@@ -67,9 +67,9 @@ try {
         Currency::ensureSchema();
         Helpers::setSetting('currency_schema_v2', '1', 'currency');
     }
-    if (Helpers::setting('provider_import_schema_v1', '0') !== '1') {
+    if (Helpers::setting('provider_import_schema_v2', '0') !== '1') {
         CategoryMapper::ensureSchema();
-        Helpers::setSetting('provider_import_schema_v1', '1', 'providers');
+        Helpers::setSetting('provider_import_schema_v2', '1', 'providers');
     }
 } catch (Throwable $e) {
     Logger::errorFile('Database connection error: ' . $e->getMessage());

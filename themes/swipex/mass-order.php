@@ -20,6 +20,21 @@ foreach ($services as $s) {
 }
 ?>
 
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-600 text-white flex items-center justify-center shadow-md shadow-purple-600/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        </div>
+        <div class="min-w-0">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Mass Order</h1>
+            <p class="text-xs text-slate-500">Submit batch orders in one click: <code class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">service_id | link | quantity</code></p>
+        </div>
+    </div>
+    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm">
+        <?= Validator::e($currencySymbol . ' ' . $displayCode) ?>
+    </span>
+</div>
+
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6"
      x-data="{
         rates: <?= Validator::e(json_encode($rateMap)) ?>,
@@ -48,13 +63,7 @@ foreach ($services as $s) {
             return { rows, total: total.toFixed(2), valid };
         }
      }">
-    <div class="lg:col-span-7 swipex-card rounded-3xl p-6 sm:p-7 min-w-0">
-        <div class="flex items-center justify-between gap-3 mb-2">
-            <h1 class="text-xl font-extrabold text-slate-900">Mass Order</h1>
-            <span class="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-extrabold border border-blue-200/70"><?= Validator::e($displayCode) ?></span>
-        </div>
-        <p class="text-sm text-slate-500 mb-5">Submit multiple orders at once using one order per line in format: <code class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">service_id | link | quantity</code></p>
-
+    <div class="lg:col-span-7 swipex-card rounded-3xl p-5 sm:p-7 min-w-0">
         <?php if (!empty($massResults)): ?>
         <div class="mb-5 p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 text-xs">
             <div class="font-bold text-slate-800 mb-1">Batch Processing Report:</div>
@@ -70,7 +79,7 @@ foreach ($services as $s) {
             <?= CSRF::field() ?>
             <textarea name="mass_orders" x-model="raw" rows="10" required
                       placeholder="12 | https://instagram.com/p/example1 | 1000&#10;15 | https://youtube.com/watch?v=example2 | 500"
-                      class="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-blue-600 outline-none font-mono text-xs bg-white"></textarea>
+                      class="swipex-input px-4 py-3 font-mono text-xs"></textarea>
 
             <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
                 <div class="text-xs text-slate-600">
@@ -81,7 +90,7 @@ foreach ($services as $s) {
                 </div>
             </div>
 
-            <button type="submit" class="w-full py-3.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-lg shadow-blue-600/25 transition">
+            <button type="submit" class="swipex-btn-primary w-full py-3.5 rounded-full font-bold text-sm">
                 Submit Mass Order
             </button>
         </form>

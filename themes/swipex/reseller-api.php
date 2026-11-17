@@ -11,13 +11,23 @@ $apiOrders = Database::fetchAll(
 );
 ?>
 
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </div>
+        <div class="min-w-0">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Reseller API v2</h1>
+            <p class="text-xs text-slate-500">Connect your panel or automation scripts to place &amp; track orders programmatically.</p>
+        </div>
+    </div>
+    <?= Helpers::statusBadge((string)$user['api_status']) ?>
+</div>
+
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
     <div class="lg:col-span-5 space-y-6 min-w-0">
         <div class="swipex-card rounded-3xl p-6">
-            <div class="flex items-center justify-between mb-4">
-                <h1 class="text-lg font-extrabold text-slate-900">API Credentials</h1>
-                <?= Helpers::statusBadge((string)$user['api_status']) ?>
-            </div>
+            <h2 class="text-lg font-extrabold text-slate-900 mb-4">API Credentials</h2>
             <div class="space-y-4 text-xs">
                 <div>
                     <label class="block font-bold text-slate-500 uppercase mb-1">API Endpoint URL</label>
@@ -43,7 +53,7 @@ $apiOrders = Database::fetchAll(
                 <form method="POST" action="/user/reseller-api.php">
                     <?= CSRF::field() ?>
                     <input type="hidden" name="action" value="regenerate_key">
-                    <button type="submit" class="w-full py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md transition">
+                    <button type="submit" class="swipex-btn-primary w-full py-2.5 rounded-full font-bold text-xs">
                         <?= $user['api_key'] ? 'Regenerate API Key' : 'Generate API Key' ?>
                     </button>
                 </form>

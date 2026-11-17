@@ -13,21 +13,28 @@ $announcements = Database::fetchAll(
 );
 ?>
 
+<div class="swipex-page-hero rounded-[22px] p-4 sm:p-5 mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+        <div class="min-w-0">
+            <h1 class="text-lg sm:text-xl font-extrabold text-slate-900 truncate">Notifications &amp; Announcements</h1>
+            <p class="text-xs text-slate-500">Real-time order updates, wallet deposits, ticket replies, and platform notices.</p>
+        </div>
+    </div>
+    <?php if (!empty($notifications)): ?>
+    <form method="POST" action="/user/notifications.php">
+        <?= CSRF::field() ?>
+        <input type="hidden" name="action" value="mark_all_read">
+        <button type="submit" class="px-4 py-2 rounded-full bg-white hover:bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold shadow-sm transition">Mark All Read</button>
+    </form>
+    <?php endif; ?>
+</div>
+
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
     <div class="lg:col-span-8 swipex-card rounded-3xl p-6 min-w-0">
-        <div class="flex items-center justify-between gap-3 mb-5">
-            <div>
-                <h1 class="text-xl font-extrabold text-slate-900">Your Notifications</h1>
-                <p class="text-xs text-slate-500">Order updates, wallet credits, and ticket replies.</p>
-            </div>
-            <?php if (!empty($notifications)): ?>
-            <form method="POST" action="/user/notifications.php">
-                <?= CSRF::field() ?>
-                <input type="hidden" name="action" value="mark_all_read">
-                <button type="submit" class="px-4 py-2 rounded-full bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition">Mark All Read</button>
-            </form>
-            <?php endif; ?>
-        </div>
+        <h2 class="text-base font-extrabold text-slate-900 mb-4">Recent Alerts</h2>
 
         <?php if (empty($notifications)): ?>
             <p class="text-sm text-slate-500 py-10 text-center">You have no notifications yet.</p>

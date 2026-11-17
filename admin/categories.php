@@ -141,7 +141,10 @@ require __DIR__ . '/includes/header.php';
 
     <div class="lg:col-span-7 space-y-6">
         <div class="smm-card rounded-3xl p-6">
-            <h2 class="text-base font-extrabold text-slate-900 mb-4">All Categories (<?= count($categories) ?>)</h2>
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h2 class="text-base font-extrabold text-slate-900">All Categories (<?= count($categories) ?>)</h2>
+                <a href="/admin/provider-categories.php" class="px-3.5 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-800 text-xs font-bold transition">Import from Provider &rarr;</a>
+            </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs">
                     <thead><tr class="border-b border-purple-100 uppercase text-slate-400"><th class="py-2">Sort</th><th class="py-2">Category</th><th class="py-2">Services</th><th class="py-2">Status</th><th class="py-2 text-right">Action</th></tr></thead>

@@ -269,6 +269,10 @@ require __DIR__ . '/includes/header.php';
                             <input type="hidden" name="provider_id" value="<?= (int)$p['id'] ?>">
                             <button type="submit" class="px-3 py-1.5 rounded-xl bg-white border border-purple-200 text-purple-800 font-bold">Test &amp; Balance</button>
                         </form>
+                        <a href="/admin/provider-categories.php?provider_id=<?= (int)$p['id'] ?>"
+                           class="px-3.5 py-1.5 rounded-xl bg-violet-100 hover:bg-violet-200 text-violet-800 font-bold transition">
+                            Import Categories &rarr;
+                        </a>
                         <a href="/admin/provider-import.php?provider_id=<?= (int)$p['id'] ?>"
                            class="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-sm transition">
                             Fetch &amp; Select Services &rarr;

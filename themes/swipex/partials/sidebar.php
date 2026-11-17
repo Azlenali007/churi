@@ -19,21 +19,24 @@ $navItems = [
     ['file' => 'profile.php',       'label' => 'Profile',        'icon' => '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'],
 ];
 ?>
-<div x-show="sidebarOpen" x-cloak @click="sidebarOpen = false" class="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm lg:hidden"></div>
+<div @click="sidebarOpen = false"
+     :class="{ 'is-open': sidebarOpen }"
+     class="swipex-sidebar-backdrop"></div>
 
-<aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-       class="fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200/80 flex flex-col shrink-0 transition-transform duration-200">
+<aside :class="{ 'is-open': sidebarOpen }"
+       class="swipex-sidebar"
+       aria-label="SwipeX Sidebar Navigation">
     <div class="px-5 py-5 flex items-center justify-between border-b border-slate-100">
-        <a href="/user/dashboard.php" class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-600/25">
+        <a href="/user/dashboard.php" class="flex items-center gap-3 min-w-0">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-600/25 shrink-0">
                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
             </div>
-            <div>
-                <div class="font-extrabold text-base tracking-tight text-slate-900 leading-none"><?= Validator::e($siteName) ?></div>
-                <div class="text-[11px] font-medium text-slate-400 mt-1"><?= Validator::e($siteTagline) ?></div>
+            <div class="min-w-0">
+                <div class="font-extrabold text-base tracking-tight text-slate-900 leading-none truncate"><?= Validator::e($siteName) ?></div>
+                <div class="text-[11px] font-medium text-slate-400 mt-1 truncate"><?= Validator::e($siteTagline) ?></div>
             </div>
         </a>
-        <button type="button" @click="sidebarOpen = false" class="lg:hidden text-slate-400 hover:text-slate-700 p-1 text-xl leading-none">&times;</button>
+        <button type="button" @click="sidebarOpen = false" aria-label="Close menu" class="swipex-mobile-only items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 text-xl leading-none shrink-0">&times;</button>
     </div>
 
     <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
@@ -41,13 +44,14 @@ $navItems = [
             $isActive = $currentScript === $item['file'];
         ?>
         <a href="/user/<?= $item['file'] ?>"
+           @click="sidebarOpen = false"
            class="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition <?= $isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900' ?>">
-            <span class="flex items-center gap-3">
+            <span class="flex items-center gap-3 min-w-0">
                 <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><?= $item['icon'] ?></svg>
-                <span><?= Validator::e($item['label']) ?></span>
+                <span class="truncate"><?= Validator::e($item['label']) ?></span>
             </span>
             <?php if (!empty($item['badge']) && $item['badge'] > 0): ?>
-                <span class="px-2 py-0.5 rounded-full text-[11px] font-bold <?= $isActive ? 'bg-white/25 text-white' : 'bg-rose-500 text-white' ?>"><?= (int)$item['badge'] ?></span>
+                <span class="px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 <?= $isActive ? 'bg-white/25 text-white' : 'bg-rose-500 text-white' ?>"><?= (int)$item['badge'] ?></span>
             <?php endif; ?>
         </a>
         <?php endforeach; ?>
@@ -55,10 +59,10 @@ $navItems = [
 
     <div class="p-3 border-t border-slate-100">
         <a href="/user/logout.php" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             <span>Logout</span>
         </a>
     </div>
 </aside>
 
-<div class="flex-1 flex flex-col min-w-0">
+<div class="swipex-main-wrap">
