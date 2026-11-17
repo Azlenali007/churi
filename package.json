@@ -1,0 +1,10 @@
+{
+  "name": "smm-pro-panel",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "php -S 0.0.0.0:3000 router.php",
+    "build": "php -r '$dir = new RecursiveDirectoryIterator(\".\", FilesystemIterator::SKIP_DOTS); $filter = new RecursiveCallbackFilterIterator($dir, fn($cur) => !in_array($cur->getFilename(), [\"node_modules\", \".git\"], true)); $it = new RecursiveIteratorIterator($filter); foreach ($it as $f) { if ($f->isFile() && in_array($f->getExtension(), [\"ts\", \"tsx\"], true)) { fwrite(STDERR, \"Forbidden TS file: \" . $f->getPathname() . \"\\n\"); exit(1); } if ($f->isFile() && $f->getExtension() === \"php\") { exec(\"php -l \" . escapeshellarg($f->getPathname()) . \" 2>&1\", $out, $rc); if ($rc !== 0) { fwrite(STDERR, implode(\"\\n\", $out) . \"\\n\"); exit(1); } } } echo \"All PHP files syntax checked cleanly.\\n\";'",
+    "lint": "npm run build"
+  }
+}

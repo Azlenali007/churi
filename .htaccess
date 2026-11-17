@@ -1,0 +1,19 @@
+Options -Indexes
+ServerSignature Off
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Protect sensitive directories
+    RewriteRule ^(config|core|includes|cron|database)/ - [F,L]
+</IfModule>
+
+<FilesMatch "\.(sql|log|env|ini|sh|bak)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-XSS-Protection "1; mode=block"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

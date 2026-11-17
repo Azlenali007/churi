@@ -1,0 +1,10 @@
+# Allow safe image assets only; block PHP execution in uploads
+<FilesMatch "\.(php|phtml|php3|php4|php5|php7|php8|phar|pl|py|cgi|sh|exe)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+<FilesMatch "\.(jpg|jpeg|png|gif|webp|svg|pdf)$">
+    Order allow,deny
+    Allow from all
+</FilesMatch>
+php_flag engine off

@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --brand-primary: #7c3aed;
+  --brand-primary-dark: #5b21b6;
+  --brand-sidebar-top: #1b1145;
+  --brand-sidebar-bottom: #120933;
+  --surface-bg: #f6f4fc;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--surface-bg);
+  color: #1e1b4b;
+}
+
+[x-cloak] {
+  display: none !important;
+}
+
+.smm-sidebar {
+  background: linear-gradient(180deg, var(--brand-sidebar-top) 0%, var(--brand-sidebar-bottom) 100%);
+}
+
+.smm-nav-active {
+  background: linear-gradient(90deg, #7c3aed 0%, #9333ea 100%);
+  box-shadow: 0 8px 20px -6px rgba(124, 58, 237, 0.65);
+}
+
+.smm-card {
+  background: #ffffff;
+  border: 1px solid rgba(139, 92, 246, 0.12);
+  box-shadow: 0 4px 20px -4px rgba(30, 27, 75, 0.05);
+}
+
+.smm-wallet-card {
+  background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 55%, #a855f7 100%);
+  box-shadow: 0 14px 30px -10px rgba(109, 40, 217, 0.55);
+}
+
+/* Custom thin scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.45);
+}
