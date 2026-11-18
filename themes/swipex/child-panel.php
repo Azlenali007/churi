@@ -67,7 +67,7 @@ $displayCode = $displayCurr['code'];
         </div>
     </div>
     <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm tabular-nums">
-        Setup Fee: <?= Currency::display($panelSetupFee, $displayCode, 2, true) ?>
+        Setup Fee: <?= Currency::renderMoney($panelSetupFee, $displayCode, 2, true) ?>
     </span>
 </div>
 
@@ -112,7 +112,7 @@ $displayCode = $displayCurr['code'];
                         <input type="number" step="0.5" min="0" max="500" name="profit_margin" value="25" required class="swipex-input px-3.5 py-2 text-xs">
                     </div>
                     <div class="p-3 rounded-xl bg-blue-50 text-xs text-blue-900 border border-blue-100">
-                        Setup Fee: <strong class="tabular-nums"><?= Currency::display($panelSetupFee, $displayCode, 2, true) ?></strong> (deducted from wallet if &gt; 0)
+                        Setup Fee: <strong class="tabular-nums"><?= Currency::renderMoney($panelSetupFee, $displayCode, 2, true) ?></strong> (deducted from wallet if &gt; 0)
                     </div>
                     <button type="submit" class="swipex-btn-primary w-full py-2.5 rounded-full font-bold text-xs">
                         Create Child Panel
@@ -168,7 +168,7 @@ $displayCode = $displayCurr['code'];
                         </div>
                         <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100">
                             <div class="text-xs text-slate-500">Panel Revenue</div>
-                            <div class="text-2xl font-extrabold text-blue-600 tabular-nums"><?= Currency::display((string)$panelStats['revenue'], $displayCode, 2, true) ?></div>
+                            <div class="text-2xl font-extrabold text-blue-600 tabular-nums"><?= Currency::renderMoney((string)$panelStats['revenue'], $displayCode, 2, true) ?></div>
                         </div>
                     </div>
 
@@ -208,7 +208,7 @@ $displayCode = $displayCurr['code'];
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Custom Rate / 1k (<?= Validator::e($displayCode) ?>)</label>
+                            <label class="block text-[11px] font-bold text-slate-500 uppercase mb-1">Custom Rate / 1k (<span data-smm-curr-code><?= Validator::e($displayCode) ?></span>)</label>
                             <input type="number" step="0.0001" min="0.0001" name="custom_rate" required placeholder="Auto or custom" class="swipex-input px-3 py-2 text-xs tabular-nums">
                         </div>
                         <button type="submit" class="swipex-btn-primary py-2 px-4 rounded-full text-xs font-bold">Add / Update</button>
@@ -221,8 +221,8 @@ $displayCode = $displayCurr['code'];
                                 <?php foreach ($panelServices as $cps): ?>
                                 <tr>
                                     <td class="py-2.5 font-semibold text-slate-800"><?= Validator::e($cps['custom_name'] ?: $cps['parent_name']) ?></td>
-                                    <td class="py-2.5 text-slate-500 tabular-nums"><?= Currency::displayRate((string)$cps['parent_rate'], $displayCode, true) ?></td>
-                                    <td class="py-2.5 font-bold text-blue-600 tabular-nums"><?= Currency::displayRate((string)$cps['custom_rate'], $displayCode, true) ?></td>
+                                    <td class="py-2.5 text-slate-500 tabular-nums"><?= Currency::renderRate((string)$cps['parent_rate'], $displayCode, true) ?></td>
+                                    <td class="py-2.5 font-bold text-blue-600 tabular-nums"><?= Currency::renderRate((string)$cps['custom_rate'], $displayCode, true) ?></td>
                                     <td class="py-2.5 text-right"><?= Helpers::statusBadge((string)$cps['status']) ?></td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -246,7 +246,7 @@ $displayCode = $displayCurr['code'];
                                 <tr>
                                     <td class="py-2.5 font-bold"><?= Validator::e($cu['username']) ?></td>
                                     <td class="py-2.5 text-slate-600"><?= Validator::e($cu['email']) ?></td>
-                                    <td class="py-2.5 font-bold text-blue-600 tabular-nums"><?= Currency::display((string)$cu['wallet_balance'], $displayCode, 2, true) ?></td>
+                                    <td class="py-2.5 font-bold text-blue-600 tabular-nums"><?= Currency::renderMoney((string)$cu['wallet_balance'], $displayCode, 2, true) ?></td>
                                     <td class="py-2.5 text-right"><?= Helpers::statusBadge((string)$cu['status']) ?></td>
                                 </tr>
                                 <?php endforeach; ?>
@@ -270,7 +270,7 @@ $displayCode = $displayCurr['code'];
                                     <td class="py-2.5 font-bold">#<?= (int)$co['id'] ?></td>
                                     <td class="py-2.5"><?= Validator::e($co['service_name']) ?></td>
                                     <td class="py-2.5"><?= number_format((int)$co['quantity']) ?></td>
-                                    <td class="py-2.5 font-bold tabular-nums"><?= Currency::formatRaw((string)$co['charge'], $coCurr, 2, true) ?></td>
+                                    <td class="py-2.5 font-bold tabular-nums"><?= Currency::renderEquivalent((string)$co['charge'], $coCurr, 2, true, '', true) ?></td>
                                     <td class="py-2.5 text-right"><?= Helpers::statusBadge((string)$co['status']) ?></td>
                                 </tr>
                                 <?php endforeach; ?>

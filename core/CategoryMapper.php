@@ -63,9 +63,60 @@ class CategoryMapper
                 UNIQUE KEY `uk_pcm_provider_key` (`provider_id`, `external_category_key`),
                 KEY `idx_pcm_platform_cat` (`platform_category_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+            $dbName = (string)$pdo->query("SELECT DATABASE()")->fetchColumn();
+            if ($dbName !== '') {
+                $hasCol = function (string $table, string $col) use ($pdo, $dbName): bool {
+                    $stmt = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+                    $stmt->execute([$dbName, $table, $col]);
+                    return (int)$stmt->fetchColumn() > 0;
+                };
+                if (!$hasCol('services', 'provider_category_raw')) {
+                    $pdo->exec("ALTER TABLE `services` ADD COLUMN `provider_category_raw` VARCHAR(200) NULL AFTER `provider_service_id`");
+                }
+                if (!$hasCol('services', 'provider_currency')) {
+                    $pdo->exec("ALTER TABLE `services` ADD COLUMN `provider_currency` VARCHAR(10) NULL DEFAULT NULL AFTER `provider_rate`");
+                }
+                if (!$hasCol('providers', 'rate_mode')) {
+                    $pdo->exec("ALTER TABLE `providers` ADD COLUMN `rate_mode` ENUM('auto','manual') NOT NULL DEFAULT 'auto' AFTER `exchange_rate`");
+                }
+                if (!$hasCol('provider_import_logs', 'failed_count')) {
+                    $pdo->exec("ALTER TABLE `provider_import_logs` ADD COLUMN `failed_count` INT NOT NULL DEFAULT 0 AFTER `skipped_count`");
+                }
+            }
         } catch (Throwable $e) {
             Logger::errorFile('CategoryMapper::ensureSchema error: ' . $e->getMessage());
+            Logger::workflowLog('provider_import', 'CategoryMapper ensureSchema failed', ['error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Extracts service list cleanly whether the provider returns a root array or wraps it under services/data/items/list/response.
+     */
+    private static function extractServiceItems($rawData): array
+    {
+        if (!is_array($rawData)) {
+            return [];
+        }
+        if (isset($rawData[0]) && is_array($rawData[0])) {
+            return $rawData;
+        }
+        foreach (['services', 'data', 'items', 'list', 'response', 'result'] as $wrapperKey) {
+            if (isset($rawData[$wrapperKey]) && is_array($rawData[$wrapperKey])) {
+                if (isset($rawData[$wrapperKey][0]) && is_array($rawData[$wrapperKey][0])) {
+                    return $rawData[$wrapperKey];
+                }
+                // Check one level deeper (e.g. response.services)
+                foreach (['services', 'items', 'list'] as $nestedKey) {
+                    if (isset($rawData[$wrapperKey][$nestedKey]) && is_array($rawData[$wrapperKey][$nestedKey])) {
+                        return array_values(array_filter($rawData[$wrapperKey][$nestedKey], 'is_array'));
+                    }
+                }
+            }
+        }
+        // Fallback: associative object keyed by service ID
+        $assocItems = array_values(array_filter($rawData, fn($v) => is_array($v) && (isset($v['service']) || isset($v['id']) || isset($v['name']))));
+        return $assocItems;
     }
 
     public static function getCategoryCacheFilePath(int $providerId): string
@@ -94,13 +145,23 @@ class CategoryMapper
     public static function fetchAndCacheCategories(array $provider, ?int $adminId = null): array
     {
         self::ensureSchema();
+        $providerId = (int)$provider['id'];
         $apiRes = ProviderAPI::getServices($provider);
         if (!$apiRes['ok']) {
+            Logger::workflowLog('provider_import', 'Fetch categories failed', [
+                'provider_id' => $providerId,
+                'http_code'   => $apiRes['http_code'] ?? null,
+                'error'       => $apiRes['error'] ?? 'Unknown provider error',
+            ]);
             return ['ok' => false, 'error' => $apiRes['error'] ?? 'Failed to fetch categories from provider.'];
         }
 
-        $items = $apiRes['data'];
-        if (!is_array($items) || empty($items)) {
+        $items = self::extractServiceItems($apiRes['data'] ?? null);
+        if (empty($items)) {
+            Logger::workflowLog('provider_import', 'Fetch categories returned empty list', [
+                'provider_id' => $providerId,
+                'http_code'   => $apiRes['http_code'] ?? null,
+            ]);
             return ['ok' => false, 'error' => 'Provider returned an empty or invalid catalog response.'];
         }
 
@@ -472,13 +533,25 @@ class CategoryMapper
     public static function fetchAndCacheCatalog(array $provider, ?int $adminId = null): array
     {
         self::ensureSchema();
+        $providerId = (int)$provider['id'];
         $apiRes = ProviderAPI::getServices($provider);
         if (!$apiRes['ok']) {
+            Logger::workflowLog('provider_import', 'Fetch services failed', [
+                'provider_id' => $providerId,
+                'admin_id'    => $adminId,
+                'http_code'   => $apiRes['http_code'] ?? null,
+                'error'       => $apiRes['error'] ?? 'Unknown provider error',
+            ]);
             return ['ok' => false, 'error' => $apiRes['error'] ?? 'Failed to fetch services from provider.'];
         }
 
-        $items = $apiRes['data'];
-        if (!is_array($items) || empty($items)) {
+        $items = self::extractServiceItems($apiRes['data'] ?? null);
+        if (empty($items)) {
+            Logger::workflowLog('provider_import', 'Fetch services returned empty or unrecognized structure', [
+                'provider_id' => $providerId,
+                'admin_id'    => $adminId,
+                'http_code'   => $apiRes['http_code'] ?? null,
+            ]);
             return ['ok' => false, 'error' => 'Provider returned an empty or invalid service list.'];
         }
 
@@ -542,8 +615,16 @@ class CategoryMapper
 
         $written = @file_put_contents(self::getCacheFilePath($providerId), json_encode($payload, JSON_UNESCAPED_UNICODE));
         if ($written === false) {
+            Logger::workflowLog('provider_import', 'Failed writing catalog cache file', ['provider_id' => $providerId]);
             return ['ok' => false, 'error' => 'Could not save fetched catalog cache to storage/cache. Check folder permissions.'];
         }
+
+        Logger::workflowLog('provider_import', 'Fetched and cached provider catalog', [
+            'provider_id'   => $providerId,
+            'admin_id'      => $adminId,
+            'total_fetched' => count($normalized),
+            'http_code'     => $apiRes['http_code'] ?? 200,
+        ]);
 
         self::logImportOperation($providerId, $adminId, 'fetch_catalog', count($normalized), 0, 0, 0, 0, 0, [
             'provider_name' => $provider['name'],
@@ -926,147 +1007,198 @@ class CategoryMapper
             'failed'             => 0,
             'categories_created' => 0,
             'local_service_ids'  => [],
+            'errors'             => [],
         ];
 
         $createdCatNames = [];
+
+        Logger::workflowLog('provider_import', 'Starting bulk import batch', [
+            'provider_id'    => $providerId,
+            'admin_id'       => $adminId,
+            'selected_count' => count($externalIds),
+            'duplicate_mode' => $duplicateMode,
+            'only_existing'  => $onlyExisting,
+        ]);
 
         foreach ($externalIds as $rawExtId) {
             $extId = trim((string)$rawExtId);
             if ($extId === '' || !isset($catalogByExt[$extId])) {
                 $stats['failed']++;
+                $stats['errors'][] = "Service #{$extId} was not found in fetched provider cache.";
                 continue;
             }
             $item = $catalogByExt[$extId];
             $stats['processed']++;
 
-            // Resolve category (saved provider_category_mappings takes priority over auto-create)
-            $rawCat = !empty($item['has_raw_category']) ? (string)$item['raw_category'] : '';
-            if ($forcedCat) {
-                $categoryId = (int)$forcedCat['id'];
-                $platform = (string)$forcedCat['platform'];
-            } elseif ($rawCat === '') {
-                $categoryId = $fallbackCategoryId;
-                $platform = Helpers::detectPlatform((string)$item['name']);
-            } else {
-                $mappedRow = Database::fetch(
-                    "SELECT c.id, c.platform
-                     FROM provider_category_mappings pcm
-                     JOIN categories c ON c.id = pcm.platform_category_id
-                     WHERE pcm.provider_id = ? AND LOWER(pcm.external_category_name) = LOWER(?)
-                     LIMIT 1",
-                    [$providerId, $rawCat]
-                );
-                if ($mappedRow) {
-                    $categoryId = (int)$mappedRow['id'];
-                    $platform = (string)$mappedRow['platform'];
+            try {
+                // Resolve category (saved provider_category_mappings takes priority over auto-create)
+                $rawCat = !empty($item['has_raw_category']) ? (string)$item['raw_category'] : '';
+                if ($forcedCat) {
+                    $categoryId = (int)$forcedCat['id'];
+                    $platform = (string)$forcedCat['platform'];
+                } elseif ($rawCat === '') {
+                    $categoryId = $fallbackCategoryId;
+                    $platform = Helpers::detectPlatform((string)$item['name']);
                 } else {
-                    $resolved = self::resolveOrCreateCategory($rawCat);
-                    $categoryId = (int)$resolved['id'];
-                    $platform = (string)$resolved['platform'];
-                    if ($resolved['created'] && !isset($createdCatNames[$categoryId])) {
-                        $createdCatNames[$categoryId] = true;
-                        $stats['categories_created']++;
+                    $mappedRow = Database::fetch(
+                        "SELECT c.id, c.platform
+                         FROM provider_category_mappings pcm
+                         JOIN categories c ON c.id = pcm.platform_category_id
+                         WHERE pcm.provider_id = ? AND LOWER(pcm.external_category_name) = LOWER(?)
+                         LIMIT 1",
+                        [$providerId, $rawCat]
+                    );
+                    if ($mappedRow) {
+                        $categoryId = (int)$mappedRow['id'];
+                        $platform = (string)$mappedRow['platform'];
+                    } else {
+                        $resolved = self::resolveOrCreateCategory($rawCat);
+                        $categoryId = (int)$resolved['id'];
+                        $platform = (string)$resolved['platform'];
+                        if ($resolved['created'] && !isset($createdCatNames[$categoryId])) {
+                            $createdCatNames[$categoryId] = true;
+                            $stats['categories_created']++;
+                        }
                     }
                 }
-            }
 
-            $providerRate = Currency::normalize((string)$item['provider_rate'], 4);
-            $calc = Currency::calculateProviderToBase($providerRate, $providerCurrency, $margin, $rateMode, $manualExchangeRate);
-            $sellingRate = ($fixedSellingPrice !== null && Currency::cmp($fixedSellingPrice, '0', 4) > 0)
-                ? $fixedSellingPrice
-                : $calc['selling_rate_base'];
+                if ($categoryId <= 0) {
+                    throw new RuntimeException("No valid category available for service #{$extId}.");
+                }
 
-            $existingMap = Database::fetch(
-                "SELECT psm.service_id FROM provider_service_mappings psm WHERE psm.provider_id = ? AND psm.external_service_id = ? LIMIT 1",
-                [$providerId, $extId]
-            );
-            if (!$existingMap) {
-                $existingSvc = Database::fetch(
-                    "SELECT id FROM services WHERE provider_id = ? AND provider_service_id = ? LIMIT 1",
+                $providerRate = Currency::normalize((string)$item['provider_rate'], 4);
+                $calc = Currency::calculateProviderToBase($providerRate, $providerCurrency, $margin, $rateMode, $manualExchangeRate);
+                $sellingRate = ($fixedSellingPrice !== null && Currency::cmp($fixedSellingPrice, '0', 4) > 0)
+                    ? $fixedSellingPrice
+                    : $calc['selling_rate_base'];
+
+                $existingMap = Database::fetch(
+                    "SELECT psm.service_id FROM provider_service_mappings psm WHERE psm.provider_id = ? AND psm.external_service_id = ? LIMIT 1",
                     [$providerId, $extId]
                 );
-                if ($existingSvc) {
-                    $existingMap = ['service_id' => $existingSvc['id']];
+                if (!$existingMap) {
+                    $existingSvc = Database::fetch(
+                        "SELECT id FROM services WHERE provider_id = ? AND provider_service_id = ? LIMIT 1",
+                        [$providerId, $extId]
+                    );
+                    if ($existingSvc) {
+                        $existingMap = ['service_id' => $existingSvc['id']];
+                    }
                 }
-            }
 
-            if ($existingMap) {
-                $serviceId = (int)$existingMap['service_id'];
-                if ($duplicateMode === 'skip') {
-                    $stats['skipped']++;
-                    continue;
+                if ($existingMap) {
+                    $serviceId = (int)$existingMap['service_id'];
+                    if ($duplicateMode === 'skip') {
+                        $stats['skipped']++;
+                        continue;
+                    }
+                    Database::execute(
+                        "UPDATE services
+                         SET category_id = ?, provider_category_raw = ?, name = ?, description = ?,
+                             type = ?, platform = ?, icon_key = ?, provider_rate = ?, provider_currency = ?, rate = ?,
+                             min_qty = ?, max_qty = ?, drip_feed_support = ?, refill_support = ?,
+                             cancel_support = ?, avg_time = COALESCE(NULLIF(?, ''), avg_time), status = ?
+                         WHERE id = ?",
+                        [
+                            $categoryId,
+                            $rawCat !== '' ? $rawCat : null,
+                            (string)$item['name'],
+                            (string)$item['description'],
+                            (string)$item['type'],
+                            $platform,
+                            $platform,
+                            $providerRate,
+                            $providerCurrency,
+                            $sellingRate,
+                            (int)$item['min_qty'],
+                            (int)$item['max_qty'],
+                            (int)$item['drip_feed_support'],
+                            (int)$item['refill_support'],
+                            (int)$item['cancel_support'],
+                            (string)$item['avg_time'],
+                            $targetStatus,
+                            $serviceId,
+                        ]
+                    );
+                    self::upsertMapping($providerId, $serviceId, $extId, $rawCat, $providerRate, $providerCurrency);
+                    $stats['updated']++;
+                    $stats['local_service_ids'][] = $serviceId;
+                } else {
+                    if ($onlyExisting) {
+                        $stats['skipped']++;
+                        continue;
+                    }
+                    $serviceId = Database::insert(
+                        "INSERT INTO services
+                         (category_id, provider_id, provider_service_id, provider_category_raw, name, description,
+                          type, platform, icon_key, provider_rate, provider_currency, rate, min_qty, max_qty,
+                          drip_feed_support, refill_support, cancel_support, avg_time, status)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            $categoryId,
+                            $providerId,
+                            $extId,
+                            $rawCat !== '' ? $rawCat : null,
+                            (string)$item['name'],
+                            (string)$item['description'],
+                            (string)$item['type'],
+                            $platform,
+                            $platform,
+                            $providerRate,
+                            $providerCurrency,
+                            $sellingRate,
+                            (int)$item['min_qty'],
+                            (int)$item['max_qty'],
+                            (int)$item['drip_feed_support'],
+                            (int)$item['refill_support'],
+                            (int)$item['cancel_support'],
+                            (string)$item['avg_time'] ?: null,
+                            $targetStatus,
+                        ]
+                    );
+                    self::upsertMapping($providerId, $serviceId, $extId, $rawCat, $providerRate, $providerCurrency);
+                    $stats['imported']++;
+                    $stats['local_service_ids'][] = $serviceId;
                 }
-                Database::execute(
-                    "UPDATE services
-                     SET category_id = ?, provider_category_raw = ?, name = ?, description = ?,
-                         type = ?, platform = ?, icon_key = ?, provider_rate = ?, provider_currency = ?, rate = ?,
-                         min_qty = ?, max_qty = ?, drip_feed_support = ?, refill_support = ?,
-                         cancel_support = ?, avg_time = COALESCE(NULLIF(?, ''), avg_time), status = ?
-                     WHERE id = ?",
-                    [
-                        $categoryId,
-                        $rawCat !== '' ? $rawCat : null,
-                        (string)$item['name'],
-                        (string)$item['description'],
-                        (string)$item['type'],
-                        $platform,
-                        $platform,
-                        $providerRate,
-                        $providerCurrency,
-                        $sellingRate,
-                        (int)$item['min_qty'],
-                        (int)$item['max_qty'],
-                        (int)$item['drip_feed_support'],
-                        (int)$item['refill_support'],
-                        (int)$item['cancel_support'],
-                        (string)$item['avg_time'],
-                        $targetStatus,
-                        $serviceId,
-                    ]
-                );
-                self::upsertMapping($providerId, $serviceId, $extId, $rawCat, $providerRate, $providerCurrency);
-                $stats['updated']++;
-                $stats['local_service_ids'][] = $serviceId;
-            } else {
-                if ($onlyExisting) {
-                    $stats['skipped']++;
-                    continue;
+            } catch (Throwable $e) {
+                $stats['failed']++;
+                if (count($stats['errors']) < 5) {
+                    $stats['errors'][] = "Service #{$extId} failed to save.";
                 }
-                $serviceId = Database::insert(
-                    "INSERT INTO services
-                     (category_id, provider_id, provider_service_id, provider_category_raw, name, description,
-                      type, platform, icon_key, provider_rate, provider_currency, rate, min_qty, max_qty,
-                      drip_feed_support, refill_support, cancel_support, avg_time, status)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        $categoryId,
-                        $providerId,
-                        $extId,
-                        $rawCat !== '' ? $rawCat : null,
-                        (string)$item['name'],
-                        (string)$item['description'],
-                        (string)$item['type'],
-                        $platform,
-                        $platform,
-                        $providerRate,
-                        $providerCurrency,
-                        $sellingRate,
-                        (int)$item['min_qty'],
-                        (int)$item['max_qty'],
-                        (int)$item['drip_feed_support'],
-                        (int)$item['refill_support'],
-                        (int)$item['cancel_support'],
-                        (string)$item['avg_time'] ?: null,
-                        $targetStatus,
-                    ]
-                );
-                self::upsertMapping($providerId, $serviceId, $extId, $rawCat, $providerRate, $providerCurrency);
-                $stats['imported']++;
-                $stats['local_service_ids'][] = $serviceId;
+                Logger::errorFile("Provider import row error (provider={$providerId}, ext_id={$extId}): " . $e->getMessage());
+                Logger::workflowLog('provider_import', 'Import row database failure', [
+                    'provider_id' => $providerId,
+                    'external_id' => $extId,
+                    'error'       => $e->getMessage(),
+                ]);
             }
         }
 
-        Database::execute("UPDATE providers SET last_sync_at = NOW() WHERE id = ?", [$providerId]);
+        try {
+            Database::execute("UPDATE providers SET last_sync_at = NOW() WHERE id = ?", [$providerId]);
+        } catch (Throwable $e) {
+            Logger::errorFile('Provider last_sync_at update error: ' . $e->getMessage());
+        }
+
+        Logger::workflowLog('provider_import', 'Completed bulk import batch', [
+            'provider_id'        => $providerId,
+            'admin_id'           => $adminId,
+            'processed'          => $stats['processed'],
+            'imported'           => $stats['imported'],
+            'updated'            => $stats['updated'],
+            'skipped'            => $stats['skipped'],
+            'failed'             => $stats['failed'],
+            'categories_created' => $stats['categories_created'],
+        ]);
+
+        if ($stats['imported'] === 0 && $stats['updated'] === 0 && $stats['skipped'] === 0 && $stats['failed'] > 0) {
+            return [
+                'ok'    => false,
+                'error' => 'Import failed for selected service(s). Check database configuration or error logs.',
+                'stats' => $stats,
+            ];
+        }
+
         return ['ok' => true, 'stats' => $stats];
     }
 

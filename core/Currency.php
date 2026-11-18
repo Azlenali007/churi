@@ -313,26 +313,46 @@ class Currency
         $code = strtoupper(trim($code));
         $enabled = self::getEnabledCurrencies();
         if (!isset($enabled[$code])) {
+            Logger::workflowLog('currency_switch', 'Rejected currency switch: unsupported or disabled', [
+                'user_id'   => $userId,
+                'requested' => $code,
+            ]);
             return false;
         }
+        $dbUpdated = false;
         if ($userId !== null && $userId > 0) {
             try {
                 Database::execute("UPDATE users SET preferred_currency = ? WHERE id = ?", [$code, $userId]);
+                $dbUpdated = true;
             } catch (Throwable $e) {
                 // Attempt self-healing migration once if preferred_currency column was missing
                 self::ensureSchema();
                 try {
                     Database::execute("UPDATE users SET preferred_currency = ? WHERE id = ?", [$code, $userId]);
+                    $dbUpdated = true;
                 } catch (Throwable $e2) {
                     Logger::errorFile('Currency::setUserDisplayCurrency DB update error: ' . $e2->getMessage());
+                    Logger::workflowLog('currency_switch', 'Failed saving preferred_currency to database', [
+                        'user_id'   => $userId,
+                        'requested' => $code,
+                        'error'     => $e2->getMessage(),
+                    ]);
                     return false;
                 }
             }
         }
+        $sessionUpdated = false;
         if (session_status() === PHP_SESSION_ACTIVE) {
             $_SESSION['display_currency'] = $code;
+            $sessionUpdated = true;
         }
         self::$activeDisplayOverride = $code;
+        Logger::workflowLog('currency_switch', 'Display currency updated', [
+            'user_id'         => $userId,
+            'currency'        => $code,
+            'db_updated'      => $dbUpdated,
+            'session_updated' => $sessionUpdated,
+        ]);
         return true;
     }
 
@@ -592,6 +612,102 @@ class Currency
         }
 
         return self::display($amount, null, $decimals, false);
+    }
+
+    public static function getClientConfig(?array $user = null): array
+    {
+        $enabled = self::getEnabledCurrencies();
+        $active = self::getActiveDisplayCurrency($user);
+        $base = self::getBaseCurrency();
+        $map = [];
+        foreach ($enabled as $code => $row) {
+            $map[$code] = [
+                'code'    => (string)$row['code'],
+                'name'    => (string)$row['name'],
+                'symbol'  => (string)$row['symbol'],
+                'rate'    => (float)$row['exchange_rate'],
+                'is_base' => ((int)($row['is_base'] ?? 0) === 1),
+            ];
+        }
+        return [
+            'activeCode'   => (string)$active['code'],
+            'activeSymbol' => (string)$active['symbol'],
+            'activeName'   => (string)$active['name'],
+            'baseCode'     => (string)$base['code'],
+            'baseSymbol'   => (string)$base['symbol'],
+            'currencies'   => $map,
+        ];
+    }
+
+    public static function renderMoney(
+        string $baseAmount,
+        ?string $targetCode = null,
+        int $decimals = 2,
+        bool $showCode = false,
+        string $prefix = ''
+    ): string {
+        $normBase = self::normalize($baseAmount, 4);
+        $formatted = $prefix . self::display($normBase, $targetCode, $decimals, $showCode);
+        return '<span data-smm-money="amount"'
+            . ' data-base-amount="' . htmlspecialchars($normBase, ENT_QUOTES, 'UTF-8') . '"'
+            . ' data-decimals="' . (int)$decimals . '"'
+            . ' data-show-code="' . ($showCode ? '1' : '0') . '"'
+            . ' data-prefix="' . htmlspecialchars($prefix, ENT_QUOTES, 'UTF-8') . '">'
+            . htmlspecialchars($formatted, ENT_QUOTES, 'UTF-8')
+            . '</span>';
+    }
+
+    public static function renderRate(
+        string $baseAmount,
+        ?string $targetCode = null,
+        bool $showCode = false,
+        string $prefix = ''
+    ): string {
+        $normBase = self::normalize($baseAmount, 4);
+        $formatted = $prefix . self::displayRate($normBase, $targetCode, $showCode);
+        return '<span data-smm-money="rate"'
+            . ' data-base-amount="' . htmlspecialchars($normBase, ENT_QUOTES, 'UTF-8') . '"'
+            . ' data-show-code="' . ($showCode ? '1' : '0') . '"'
+            . ' data-prefix="' . htmlspecialchars($prefix, ENT_QUOTES, 'UTF-8') . '">'
+            . htmlspecialchars($formatted, ENT_QUOTES, 'UTF-8')
+            . '</span>';
+    }
+
+    public static function renderEquivalent(
+        string $origAmount,
+        string $origCurrency,
+        int $decimals = 2,
+        bool $showCode = true,
+        string $prefix = '',
+        bool $showOrigSub = true
+    ): string {
+        $baseCode = self::getBaseCode();
+        $origCurr = strtoupper(trim($origCurrency)) ?: $baseCode;
+        $normOrig = self::normalize($origAmount, 4);
+        $dispCode = self::getActiveDisplayCode();
+
+        $origFmt = $prefix . self::formatRaw($normOrig, $origCurr, $decimals, $showCode);
+        $dispFmt = ($dispCode !== $origCurr)
+            ? ($prefix . self::display(self::convert($normOrig, $origCurr, $baseCode, 6), $dispCode, $decimals, $showCode))
+            : $origFmt;
+
+        $html = '<span data-smm-equiv="1"'
+            . ' data-orig-amount="' . htmlspecialchars($normOrig, ENT_QUOTES, 'UTF-8') . '"'
+            . ' data-orig-currency="' . htmlspecialchars($origCurr, ENT_QUOTES, 'UTF-8') . '"'
+            . ' data-decimals="' . (int)$decimals . '"'
+            . ' data-show-code="' . ($showCode ? '1' : '0') . '"'
+            . ' data-prefix="' . htmlspecialchars($prefix, ENT_QUOTES, 'UTF-8') . '"'
+            . ($showOrigSub ? '' : ' data-no-orig-sub="1"') . '>'
+            . '<span data-smm-equiv-main>' . htmlspecialchars($dispFmt, ENT_QUOTES, 'UTF-8') . '</span>';
+
+        if ($showOrigSub) {
+            $hiddenCls = $dispCode === $origCurr ? ' hidden' : '';
+            $html .= '<span data-smm-equiv-orig class="block text-[10px] font-medium text-slate-400' . $hiddenCls . '">Orig: '
+                . htmlspecialchars($origFmt, ENT_QUOTES, 'UTF-8')
+                . '</span>';
+        }
+        $html .= '</span>';
+        return $html;
     }
 
     /**

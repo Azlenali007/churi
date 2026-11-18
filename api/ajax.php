@@ -21,22 +21,30 @@ if ($action === 'set_currency') {
         Helpers::jsonResponse(['ok' => false, 'error' => 'Method not allowed.'], 405);
     }
     $code = strtoupper(trim((string)($_POST['currency'] ?? '')));
+    Logger::workflowLog('currency_switch', 'AJAX set_currency request received', [
+        'user_id'   => (int)$user['id'],
+        'requested' => $code,
+    ]);
     $ok = Currency::setUserDisplayCurrency($code, (int)$user['id']);
     if (!$ok) {
         Helpers::jsonResponse(['ok' => false, 'error' => 'Selected currency is not supported or failed to save.'], 400);
     }
     $curr = Currency::getCurrency($code);
+    $clientCfg = Currency::getClientConfig($user);
     if (session_status() === PHP_SESSION_ACTIVE) {
         session_write_close();
     }
     Helpers::jsonResponse([
-        'ok'       => true,
-        'currency' => [
+        'ok'         => true,
+        'currency'   => [
             'code'          => $curr['code'],
             'name'          => $curr['name'],
             'symbol'        => $curr['symbol'],
             'exchange_rate' => $curr['exchange_rate'],
         ],
+        'base_code'  => $clientCfg['baseCode'],
+        'currencies' => $clientCfg['currencies'],
+        'csrf_token' => CSRF::token(),
     ]);
 }
 

@@ -8,14 +8,17 @@ class ProviderAPI
 {
     public static function call(array $provider, string $action, array $params = []): array
     {
+        $providerId = (int)($provider['id'] ?? 0);
         if (!function_exists('curl_init')) {
-            return ['ok' => false, 'error' => 'PHP cURL extension is not enabled on this server.'];
+            Logger::workflowLog('provider_api', 'PHP cURL extension missing', ['provider_id' => $providerId, 'action' => $action]);
+            return ['ok' => false, 'http_code' => 0, 'error' => 'PHP cURL extension is not enabled on this server.'];
         }
 
         $apiUrl = trim((string)($provider['api_url'] ?? ''));
         $apiKey = Helpers::decryptSecret((string)($provider['api_key_enc'] ?? ''));
         if ($apiUrl === '' || $apiKey === '') {
-            return ['ok' => false, 'error' => 'Provider API URL or API key is not configured.'];
+            Logger::workflowLog('provider_api', 'Missing provider URL or API key', ['provider_id' => $providerId, 'action' => $action]);
+            return ['ok' => false, 'http_code' => 0, 'error' => 'Provider API URL or API key is not configured or could not be decrypted.'];
         }
 
         $postData = array_merge(['key' => $apiKey, 'action' => $action], $params);
@@ -26,9 +29,12 @@ class ProviderAPI
             CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => http_build_query($postData),
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 30,
-            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_TIMEOUT        => 35,
+            CURLOPT_CONNECTTIMEOUT => 12,
             CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HTTPHEADER     => ['Accept: application/json'],
             CURLOPT_USERAGENT      => 'SMMPRO-Client/1.0',
         ]);
 
@@ -39,38 +45,55 @@ class ProviderAPI
 
         if ($raw === false || $curlErr !== '') {
             $errMsg = 'cURL error: ' . ($curlErr ?: 'Empty response');
-            Logger::api('provider_out', (int)($provider['id'] ?? 0), null, $apiUrl . '?action=' . $action, $postData, $errMsg, $httpCode, 'error');
-            if (!empty($provider['id'])) {
-                Database::execute("UPDATE providers SET last_error = ? WHERE id = ?", [$errMsg, $provider['id']]);
+            Logger::api('provider_out', $providerId, null, $apiUrl . '?action=' . $action, $postData, $errMsg, $httpCode, 'error');
+            Logger::workflowLog('provider_api', 'cURL request failed', ['provider_id' => $providerId, 'action' => $action, 'http_code' => $httpCode, 'error' => $errMsg]);
+            if ($providerId > 0) {
+                Database::execute("UPDATE providers SET last_error = ? WHERE id = ?", [$errMsg, $providerId]);
             }
-            return ['ok' => false, 'error' => $errMsg];
+            return ['ok' => false, 'http_code' => $httpCode, 'error' => $errMsg];
         }
 
-        $decoded = json_decode($raw, true);
+        // Strip UTF-8 BOM if present before decoding
+        $cleanRaw = preg_replace('/^\xEF\xBB\xBF/', '', (string)$raw);
+        $decoded = json_decode((string)$cleanRaw, true);
         if (!is_array($decoded)) {
-            $errMsg = 'Invalid JSON returned by provider (HTTP ' . $httpCode . ').';
-            Logger::api('provider_out', (int)($provider['id'] ?? 0), null, $apiUrl . '?action=' . $action, $postData, substr($raw, 0, 2000), $httpCode, 'error');
-            if (!empty($provider['id'])) {
-                Database::execute("UPDATE providers SET last_error = ? WHERE id = ?", [$errMsg, $provider['id']]);
+            $jsonErr = json_last_error_msg();
+            $errMsg = 'Invalid JSON returned by provider (HTTP ' . $httpCode . ': ' . $jsonErr . ').';
+            Logger::api('provider_out', $providerId, null, $apiUrl . '?action=' . $action, $postData, substr((string)$raw, 0, 2000), $httpCode, 'error');
+            Logger::workflowLog('provider_api', 'JSON decode failed', ['provider_id' => $providerId, 'action' => $action, 'http_code' => $httpCode, 'json_error' => $jsonErr]);
+            if ($providerId > 0) {
+                Database::execute("UPDATE providers SET last_error = ? WHERE id = ?", [$errMsg, $providerId]);
             }
-            return ['ok' => false, 'error' => $errMsg];
+            return ['ok' => false, 'http_code' => $httpCode, 'error' => $errMsg];
+        }
+
+        if ($httpCode >= 400 && !isset($decoded['error'])) {
+            $errMsg = 'Provider HTTP error ' . $httpCode . '.';
+            Logger::api('provider_out', $providerId, null, $apiUrl . '?action=' . $action, $postData, $decoded, $httpCode, 'error');
+            Logger::workflowLog('provider_api', 'HTTP error response', ['provider_id' => $providerId, 'action' => $action, 'http_code' => $httpCode]);
+            if ($providerId > 0) {
+                Database::execute("UPDATE providers SET last_error = ? WHERE id = ?", [$errMsg, $providerId]);
+            }
+            return ['ok' => false, 'http_code' => $httpCode, 'error' => $errMsg, 'data' => $decoded];
         }
 
         if (isset($decoded['error'])) {
-            $errMsg = (string)$decoded['error'];
-            Logger::api('provider_out', (int)($provider['id'] ?? 0), null, $apiUrl . '?action=' . $action, $postData, $decoded, $httpCode, 'error');
-            if (!empty($provider['id'])) {
-                Database::execute("UPDATE providers SET last_error = ? WHERE id = ?", [$errMsg, $provider['id']]);
+            $errMsg = is_string($decoded['error']) ? $decoded['error'] : json_encode($decoded['error']);
+            Logger::api('provider_out', $providerId, null, $apiUrl . '?action=' . $action, $postData, $decoded, $httpCode, 'error');
+            Logger::workflowLog('provider_api', 'Provider returned API error', ['provider_id' => $providerId, 'action' => $action, 'http_code' => $httpCode, 'error' => $errMsg]);
+            if ($providerId > 0) {
+                Database::execute("UPDATE providers SET last_error = ? WHERE id = ?", [$errMsg, $providerId]);
             }
-            return ['ok' => false, 'error' => $errMsg, 'data' => $decoded];
+            return ['ok' => false, 'http_code' => $httpCode, 'error' => $errMsg, 'data' => $decoded];
         }
 
-        Logger::api('provider_out', (int)($provider['id'] ?? 0), null, $apiUrl . '?action=' . $action, $postData, is_array($decoded) && count($decoded) > 20 ? ('[' . count($decoded) . ' items]') : $decoded, $httpCode, 'ok');
-        if (!empty($provider['id'])) {
-            Database::execute("UPDATE providers SET last_error = NULL WHERE id = ?", [$provider['id']]);
+        Logger::api('provider_out', $providerId, null, $apiUrl . '?action=' . $action, $postData, is_array($decoded) && count($decoded) > 20 ? ('[' . count($decoded) . ' items]') : $decoded, $httpCode, 'ok');
+        Logger::workflowLog('provider_api', 'Provider API request succeeded', ['provider_id' => $providerId, 'action' => $action, 'http_code' => $httpCode, 'top_keys' => is_array($decoded) ? count($decoded) : 0]);
+        if ($providerId > 0) {
+            Database::execute("UPDATE providers SET last_error = NULL WHERE id = ?", [$providerId]);
         }
 
-        return ['ok' => true, 'data' => $decoded];
+        return ['ok' => true, 'http_code' => $httpCode, 'data' => $decoded];
     }
 
     public static function getBalance(array $provider): array

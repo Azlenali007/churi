@@ -6,23 +6,24 @@ CategoryMapper::ensureSchema();
 $ajaxAction = (string)($_REQUEST['ajax_action'] ?? '');
 
 if ($ajaxAction !== '') {
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        CSRF::requireValid();
-    }
-
-    $providerId = (int)($_REQUEST['provider_id'] ?? 0);
-    $provider = $providerId > 0 ? Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$providerId]) : null;
-
-    if ($ajaxAction === 'fetch_categories') {
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            Helpers::jsonResponse(['ok' => false, 'error' => 'POST required.'], 405);
+    try {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            CSRF::requireValid();
         }
-        if (!$provider) {
-            Helpers::jsonResponse(['ok' => false, 'error' => 'Please select a valid provider.'], 404);
+
+        $providerId = (int)($_REQUEST['provider_id'] ?? 0);
+        $provider = $providerId > 0 ? Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$providerId]) : null;
+
+        if ($ajaxAction === 'fetch_categories') {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                Helpers::jsonResponse(['ok' => false, 'error' => 'POST required.'], 405);
+            }
+            if (!$provider) {
+                Helpers::jsonResponse(['ok' => false, 'error' => 'Please select a valid provider.'], 404);
+            }
+            $res = CategoryMapper::fetchAndCacheCategories($provider, (int)$admin['id']);
+            Helpers::jsonResponse($res, $res['ok'] ? 200 : 400);
         }
-        $res = CategoryMapper::fetchAndCacheCategories($provider, (int)$admin['id']);
-        Helpers::jsonResponse($res, $res['ok'] ? 200 : 400);
-    }
 
     if ($ajaxAction === 'query_categories') {
         if (!$provider) {
@@ -82,7 +83,17 @@ if ($ajaxAction !== '') {
         Helpers::jsonResponse(['ok' => true, 'mappings' => $savedMappings, 'logs' => $logs]);
     }
 
-    Helpers::jsonResponse(['ok' => false, 'error' => 'Unknown action.'], 400);
+        Helpers::jsonResponse(['ok' => false, 'error' => 'Unknown action.'], 400);
+    } catch (Throwable $e) {
+        Logger::errorFile('admin/provider-categories.php AJAX error (' . $ajaxAction . '): ' . $e->getMessage());
+        Logger::workflowLog('provider_category_import', 'AJAX fatal exception', [
+            'action'      => $ajaxAction,
+            'provider_id' => (int)($_REQUEST['provider_id'] ?? 0),
+            'admin_id'    => (int)($admin['id'] ?? 0),
+            'error'       => $e->getMessage(),
+        ]);
+        Helpers::jsonResponse(['ok' => false, 'error' => 'Server error while processing provider category request. Please check logs.'], 500);
+    }
 }
 
 $pageTitle = 'Provider Service Category Import';
@@ -110,15 +121,20 @@ $categoryLogs = Database::fetchAll(
 require __DIR__ . '/includes/head.php';
 require __DIR__ . '/includes/sidebar.php';
 require __DIR__ . '/includes/header.php';
+$jsonFlags = JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE;
+$catWorkbenchCfg = [
+    'providerId'         => (int)$selectedProviderId,
+    'csrfToken'          => CSRF::token(),
+    'platformCategories' => $platformCategories,
+    'initialMappings'    => $savedMappings,
+    'initialLogs'        => $categoryLogs,
+];
 ?>
+<script>
+window.__SMM_PROVIDER_CAT_CFG = <?= json_encode($catWorkbenchCfg, $jsonFlags) ?>;
+</script>
 
-<div class="space-y-6" x-data="providerCategoryWorkbench({
-    providerId: <?= (int)$selectedProviderId ?>,
-    csrfToken: <?= json_encode(CSRF::token()) ?>,
-    platformCategories: <?= json_encode($platformCategories) ?>,
-    initialMappings: <?= json_encode($savedMappings) ?>,
-    initialLogs: <?= json_encode($categoryLogs) ?>
-})" x-init="init()">
+<div class="space-y-6" x-data="providerCategoryWorkbench(window.__SMM_PROVIDER_CAT_CFG)" x-init="init()">
 
     <!-- Header & Provider Fetch Bar -->
     <div class="smm-card rounded-3xl p-5 sm:p-6">
@@ -173,6 +189,14 @@ require __DIR__ . '/includes/header.php';
                 Last fetched: <strong class="text-slate-700" x-text="fetchedAt || 'Never'"></strong>
             </div>
         </div>
+    </div>
+
+    <!-- Inline Status / Error Feedback Banner -->
+    <div x-show="inlineNotice" x-cloak
+         :class="inlineNotice?.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : (inlineNotice?.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' : (inlineNotice?.type === 'info' ? 'bg-indigo-50 border-indigo-200 text-indigo-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'))"
+         class="rounded-2xl border px-4 py-3 text-xs font-bold flex items-center justify-between gap-3">
+        <span x-text="inlineNotice?.message"></span>
+        <button type="button" @click="inlineNotice = null" class="opacity-70 hover:opacity-100 text-base leading-none">&times;</button>
     </div>
 
     <!-- Search, Selection & Bulk Mapping Controls -->
@@ -467,6 +491,14 @@ function providerCategoryWorkbench(cfg) {
     confirmModalOpen: false,
     confirmSummary: { selected: 0, createOrMatch: 0, mapExisting: 0 },
     lastImportStats: null,
+    inlineNotice: null,
+
+    notify(message, type = 'info') {
+      this.inlineNotice = { message, type };
+      if (typeof window.showToast === 'function') {
+        window.showToast(message, type);
+      }
+    },
 
     init() {
       if (this.providerId > 0) {
@@ -478,7 +510,32 @@ function providerCategoryWorkbench(cfg) {
       this.selectedKeys = [];
       this.targetOverrides = {};
       this.lastImportStats = null;
+      this.inlineNotice = null;
       this.queryCategories();
+    },
+
+    async safeFetchJson(url, options = {}) {
+      const resp = await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...options });
+      const text = await resp.text();
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        return {
+          ok: false,
+          status: resp.status,
+          error: resp.status === 401 || resp.status === 403
+            ? 'Your admin session expired. Please refresh and sign in again.'
+            : `Unexpected server response (HTTP ${resp.status}). Please check server logs.`,
+        };
+      }
+      if (data && data.csrf_token) {
+        this.csrfToken = data.csrf_token;
+      }
+      if (!resp.ok && data && typeof data.ok === 'undefined') {
+        data.ok = false;
+      }
+      return data || { ok: false, error: `Request failed (HTTP ${resp.status}).` };
     },
 
     async postAjax(action, paramsObj = {}) {
@@ -486,9 +543,8 @@ function providerCategoryWorkbench(cfg) {
       for (const [k, v] of Object.entries(paramsObj)) {
         fd.append(k, String(v));
       }
-      const resp = await fetch('/admin/provider-categories.php', {
+      return this.safeFetchJson('/admin/provider-categories.php', {
         method: 'POST',
-        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'X-Requested-With': 'XMLHttpRequest',
@@ -496,23 +552,23 @@ function providerCategoryWorkbench(cfg) {
         },
         body: fd.toString(),
       });
-      return resp.json();
     },
 
     async fetchCategories() {
       if (!this.providerId || this.fetching) return;
       this.fetching = true;
+      this.inlineNotice = null;
       try {
         const res = await this.postAjax('fetch_categories');
         if (res.ok) {
-          window.showToast(`Fetched ${res.total_categories} categories from ${res.total_services_seen} services (nothing imported yet).`, 'success');
+          this.notify(`Fetched ${res.total_categories} categories from ${res.total_services_seen} services (nothing imported yet).`, 'success');
           await this.queryCategories();
           await this.refreshSavedAndLogs();
         } else {
-          window.showToast(res.error || 'Failed to fetch categories.', 'error');
+          this.notify(res.error || 'Failed to fetch categories.', 'error');
         }
       } catch (e) {
-        window.showToast('Network error while fetching provider categories.', 'error');
+        this.notify('Network error while fetching provider categories.', 'error');
       } finally {
         this.fetching = false;
       }
@@ -528,8 +584,9 @@ function providerCategoryWorkbench(cfg) {
           search: this.search,
           status: this.statusFilter,
         });
-        const resp = await fetch(`/admin/provider-categories.php?${qs.toString()}`, { credentials: 'same-origin', cache: 'no-store' });
-        const res = await resp.json();
+        const res = await this.safeFetchJson(`/admin/provider-categories.php?${qs.toString()}`, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
         if (res.ok) {
           this.hasCatalog = true;
           this.fetchedAt = res.fetched_at || '';
@@ -658,14 +715,14 @@ function providerCategoryWorkbench(cfg) {
           if (Array.isArray(res.platform_categories)) {
             this.platformCategories = res.platform_categories;
           }
-          window.showToast(`Imported ${res.stats.imported}, updated ${res.stats.updated}, skipped ${res.stats.skipped} categories.`, 'success');
+          this.notify(`Imported ${res.stats.imported}, updated ${res.stats.updated}, skipped ${res.stats.skipped} categories.`, 'success');
           await this.queryCategories();
           await this.refreshSavedAndLogs();
         } else {
-          window.showToast(res.error || 'Category import failed.', 'error');
+          this.notify(res.error || 'Category import failed.', 'error');
         }
       } catch (e) {
-        window.showToast('Unexpected error during category import.', 'error');
+        this.notify('Unexpected error during category import.', 'error');
       } finally {
         this.importing = false;
       }
@@ -674,15 +731,18 @@ function providerCategoryWorkbench(cfg) {
     async deleteMapping(mappingId) {
       const res = await this.postAjax('delete_mapping', { mapping_id: mappingId });
       if (res.ok) {
-        window.showToast('Category mapping removed.', 'info');
+        this.notify('Category mapping removed.', 'info');
         await this.queryCategories();
         await this.refreshSavedAndLogs();
+      } else {
+        this.notify(res.error || 'Failed to delete mapping.', 'error');
       }
     },
 
     async refreshSavedAndLogs() {
-      const resp = await fetch('/admin/provider-categories.php?ajax_action=recent_data', { credentials: 'same-origin', cache: 'no-store' });
-      const res = await resp.json();
+      const res = await this.safeFetchJson('/admin/provider-categories.php?ajax_action=recent_data', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      });
       if (res.ok) {
         this.savedMappings = res.mappings || [];
         this.categoryLogs = res.logs || [];

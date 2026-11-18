@@ -41,7 +41,8 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
             <p class="text-xs text-slate-500">Top up instantly via Razorpay or manual transfer with live ledger history.</p>
         </div>
     </div>
-    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm">
+    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm"
+          data-smm-curr-badge="{symbol} {code}">
         <?= Validator::e($currencySymbol . ' ' . $displayCode) ?>
     </span>
 </div>
@@ -49,19 +50,39 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
 <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
     <!-- Left Wallet & Deposit Form -->
     <div class="lg:col-span-5 space-y-6 min-w-0">
-        <div class="swipex-balance-card rounded-3xl p-6">
+        <div class="swipex-balance-card rounded-3xl p-6"
+             x-data="{ isNonBase: <?= $displayCode !== $baseCode ? 'true' : 'false' ?> }"
+             x-init="window.addEventListener('smm:currency-changed', ev => { if (ev.detail) isNonBase = (ev.detail.code !== ev.detail.baseCode); })">
             <div class="flex items-center justify-between gap-2">
                 <div class="text-xs font-semibold text-slate-400">Available Wallet Balance</div>
-                <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-extrabold border border-blue-200/70"><?= Validator::e($displayCode) ?></span>
+                <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-extrabold border border-blue-200/70" data-smm-curr-code><?= Validator::e($displayCode) ?></span>
             </div>
-            <div class="text-3xl font-extrabold text-slate-900 mt-1 tabular-nums"><?= Currency::display((string)$user['wallet_balance'], $displayCode, 2, true) ?></div>
-            <?php if ($displayCode !== $baseCode): ?>
-                <div class="text-[11px] text-slate-400 mt-1 tabular-nums">Wallet Ledger Base: <?= Currency::formatBase((string)$user['wallet_balance'], 2, true) ?></div>
-            <?php endif; ?>
-            <div class="text-xs text-slate-500 mt-3 tabular-nums">Total Lifetime Spent: <strong class="text-slate-800"><?= Currency::display((string)$user['total_spent'], $displayCode, 2, true) ?></strong></div>
+            <div class="text-3xl font-extrabold text-slate-900 mt-1 tabular-nums"><?= Currency::renderMoney((string)$user['wallet_balance'], $displayCode, 2, true) ?></div>
+            <div x-show="isNonBase" x-cloak class="text-[11px] text-slate-400 mt-1 tabular-nums">Wallet Ledger Base: <?= Currency::formatBase((string)$user['wallet_balance'], 2, true) ?></div>
+            <div class="text-xs text-slate-500 mt-3 tabular-nums">Total Lifetime Spent: <strong class="text-slate-800"><?= Currency::renderMoney((string)$user['total_spent'], $displayCode, 2, true) ?></strong></div>
         </div>
 
-        <div class="swipex-card rounded-3xl p-6" x-data="{ tab: '<?= $rzpCfg ? 'razorpay' : 'manual' ?>', rzpAmount: '<?= Validator::e($defaultRzpDisp) ?>', rzpBusy: false }">
+        <div class="swipex-card rounded-3xl p-6"
+             x-data="{
+                tab: '<?= $rzpCfg ? 'razorpay' : 'manual' ?>',
+                rzpAmount: '<?= Validator::e($defaultRzpDisp) ?>',
+                rzpMin: '<?= Validator::e($rzpMinDisp) ?>',
+                rzpMax: '<?= Validator::e($rzpMaxDisp) ?>',
+                activeCode: '<?= Validator::e($displayCode) ?>',
+                isNonBase: <?= $displayCode !== $baseCode ? 'true' : 'false' ?>,
+                rzpBusy: false,
+                init() {
+                    window.addEventListener('smm:currency-changed', (ev) => {
+                        const d = ev.detail || {};
+                        if (!d.code) return;
+                        this.activeCode = d.code;
+                        this.isNonBase = (d.code !== d.baseCode);
+                        this.rzpAmount = window.smmConvertFromBase('500', d.code).toFixed(2);
+                        this.rzpMin = window.smmConvertFromBase('<?= $rzpCfg ? (string)$rzpCfg['gateway']['min_amount'] : '0' ?>', d.code).toFixed(2);
+                        this.rzpMax = window.smmConvertFromBase('<?= $rzpCfg ? (string)$rzpCfg['gateway']['max_amount'] : '0' ?>', d.code).toFixed(2);
+                    });
+                }
+             }">
             <h2 class="text-lg font-extrabold text-slate-900 mb-4">Add Funds</h2>
 
             <div class="flex gap-2 mb-5 bg-slate-100 p-1 rounded-full text-xs font-bold">
@@ -77,20 +98,18 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                     </div>
                 <?php else: ?>
                     <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Amount (<?= Validator::e($currencySymbol . ' ' . $displayCode) ?>)</label>
-                        <input type="number" step="0.01" min="<?= Validator::e($rzpMinDisp) ?>" max="<?= Validator::e($rzpMaxDisp) ?>"
+                        <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Amount (<span data-smm-curr-badge="{symbol} {code}"><?= Validator::e($currencySymbol . ' ' . $displayCode) ?></span>)</label>
+                        <input type="number" step="0.01" :min="rzpMin" :max="rzpMax"
                                x-model="rzpAmount" class="swipex-input px-4 py-2.5 text-sm font-bold tabular-nums">
                         <div class="text-[11px] text-slate-500 mt-1 tabular-nums">
-                            Limits: <?= Currency::display((string)$rzpCfg['gateway']['min_amount'], $displayCode, 2, true) ?> &ndash; <?= Currency::display((string)$rzpCfg['gateway']['max_amount'], $displayCode, 2, true) ?>
+                            Limits: <?= Currency::renderMoney((string)$rzpCfg['gateway']['min_amount'], $displayCode, 2, true) ?> &ndash; <?= Currency::renderMoney((string)$rzpCfg['gateway']['max_amount'], $displayCode, 2, true) ?>
                         </div>
-                        <?php if ($displayCode !== $baseCode): ?>
-                        <div class="text-[11px] text-blue-700 mt-1">
+                        <div x-show="isNonBase" x-cloak class="text-[11px] text-blue-700 mt-1">
                             Converted automatically to <?= Validator::e($baseCode) ?> for Razorpay checkout &amp; wallet credit.
                         </div>
-                        <?php endif; ?>
                     </div>
                     <button type="button" :disabled="rzpBusy"
-                            @click="startRazorpay(rzpAmount, '<?= Validator::e(CSRF::token()) ?>', '<?= Validator::e($displayCode) ?>', () => rzpBusy = true, () => rzpBusy = false)"
+                            @click="startRazorpay(rzpAmount, '<?= Validator::e(CSRF::token()) ?>', activeCode, () => rzpBusy = true, () => rzpBusy = false)"
                             class="swipex-btn-primary w-full py-3.5 rounded-full font-bold text-sm">
                         <span x-text="rzpBusy ? 'Connecting to Razorpay...' : 'Pay Securely with Razorpay'"></span>
                     </button>
@@ -174,13 +193,11 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                         </div>
 
                         <div>
-                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Amount Sent (<?= Validator::e($currencySymbol . ' ' . $displayCode) ?>)</label>
+                            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Amount Sent (<span data-smm-curr-badge="{symbol} {code}"><?= Validator::e($currencySymbol . ' ' . $displayCode) ?></span>)</label>
                             <input type="number" step="0.01" min="0.01" name="amount" required class="swipex-input px-3.5 py-2.5 text-sm font-bold tabular-nums">
-                            <?php if ($displayCode !== $baseCode): ?>
-                            <div class="text-[11px] text-slate-500 mt-1">
-                                Converted from <?= Validator::e($displayCode) ?> to <?= Validator::e($baseCode) ?> once upon submission.
+                            <div x-show="isNonBase" x-cloak class="text-[11px] text-slate-500 mt-1">
+                                Converted from <span data-smm-curr-code><?= Validator::e($displayCode) ?></span> to <?= Validator::e($baseCode) ?> once upon submission.
                             </div>
-                            <?php endif; ?>
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1">UTR / Transaction Reference ID</label>
@@ -231,19 +248,12 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                         <?php foreach ($payments as $pay):
                             $payCurr = strtoupper((string)($pay['currency'] ?? $baseCode));
                             if ($payCurr === '') $payCurr = $baseCode;
-                            $payOrig = Currency::formatRaw((string)$pay['amount'], $payCurr, 2, true);
-                            $payDisp = ($displayCode !== $payCurr)
-                                ? Currency::display(Currency::convertToBase((string)$pay['amount'], $payCurr, 4), $displayCode, 2, true)
-                                : $payOrig;
                         ?>
                         <tr>
                             <td class="py-3 pr-3 font-bold text-slate-800"><?= Validator::e($pay['transaction_ref']) ?></td>
                             <td class="py-3 pr-3 text-slate-600"><?= Validator::e($pay['gateway_name']) ?></td>
                             <td class="py-3 pr-3 font-bold text-blue-600 tabular-nums whitespace-nowrap">
-                                <div><?= Validator::e($payDisp) ?></div>
-                                <?php if ($displayCode !== $payCurr): ?>
-                                    <div class="text-[10px] font-medium text-slate-400">Orig: <?= Validator::e($payOrig) ?></div>
-                                <?php endif; ?>
+                                <?= Currency::renderEquivalent((string)$pay['amount'], $payCurr, 2, true, '', true) ?>
                             </td>
                             <td class="py-3 pr-3"><?= Helpers::statusBadge((string)$pay['status']) ?></td>
                             <td class="py-3 text-right text-slate-500"><?= date('M j, H:i', strtotime($pay['created_at'])) ?></td>
@@ -274,29 +284,16 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                             $isCredit = in_array($tx['type'], ['credit','refund','referral_bonus','admin_add','payment'], true);
                             $txCurr = strtoupper((string)($tx['currency_code'] ?? $baseCode));
                             if ($txCurr === '') $txCurr = $baseCode;
-                            $txOrig = Currency::formatRaw((string)$tx['amount'], $txCurr, 2, true);
-                            $txDisp = ($displayCode !== $txCurr)
-                                ? Currency::display(Currency::convertToBase((string)$tx['amount'], $txCurr, 4), $displayCode, 2, true)
-                                : $txOrig;
-                            $balOrig = Currency::formatRaw((string)$tx['balance_after'], $txCurr, 2, true);
-                            $balDisp = ($displayCode !== $txCurr)
-                                ? Currency::display(Currency::convertToBase((string)$tx['balance_after'], $txCurr, 4), $displayCode, 2, true)
-                                : $balOrig;
+                            $sign = $isCredit ? '+' : '-';
                         ?>
                         <tr>
                             <td class="py-3 pr-3 font-semibold uppercase text-slate-600"><?= Validator::e($tx['type']) ?></td>
                             <td class="py-3 pr-3 text-slate-700"><?= Validator::e($tx['description']) ?></td>
                             <td class="py-3 pr-3 font-bold tabular-nums whitespace-nowrap <?= $isCredit ? 'text-emerald-600' : 'text-rose-600' ?>">
-                                <div><?= $isCredit ? '+' : '-' ?><?= Validator::e($txDisp) ?></div>
-                                <?php if ($displayCode !== $txCurr): ?>
-                                    <div class="text-[10px] font-medium text-slate-400">Orig: <?= $isCredit ? '+' : '-' ?><?= Validator::e($txOrig) ?></div>
-                                <?php endif; ?>
+                                <?= Currency::renderEquivalent((string)$tx['amount'], $txCurr, 2, true, $sign, true) ?>
                             </td>
                             <td class="py-3 pr-3 font-semibold text-slate-800 tabular-nums whitespace-nowrap">
-                                <div><?= Validator::e($balDisp) ?></div>
-                                <?php if ($displayCode !== $txCurr): ?>
-                                    <div class="text-[10px] font-normal text-slate-400">Orig: <?= Validator::e($balOrig) ?></div>
-                                <?php endif; ?>
+                                <?= Currency::renderEquivalent((string)$tx['balance_after'], $txCurr, 2, true, '', true) ?>
                             </td>
                             <td class="py-3 text-right text-slate-400"><?= date('M j, H:i', strtotime($tx['created_at'])) ?></td>
                         </tr>
@@ -323,18 +320,11 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                         <?php foreach ($refunds as $rf):
                             $rfCurr = strtoupper((string)($rf['currency_code'] ?? $baseCode));
                             if ($rfCurr === '') $rfCurr = $baseCode;
-                            $rfOrig = Currency::formatRaw((string)$rf['amount'], $rfCurr, 2, true);
-                            $rfDisp = ($displayCode !== $rfCurr)
-                                ? Currency::display(Currency::convertToBase((string)$rf['amount'], $rfCurr, 4), $displayCode, 2, true)
-                                : $rfOrig;
                         ?>
                         <tr>
                             <td class="py-3 pr-3 text-slate-700"><?= Validator::e($rf['description']) ?></td>
                             <td class="py-3 pr-3 font-bold text-emerald-600 tabular-nums whitespace-nowrap">
-                                <div>+<?= Validator::e($rfDisp) ?></div>
-                                <?php if ($displayCode !== $rfCurr): ?>
-                                    <div class="text-[10px] font-medium text-slate-400">Orig: +<?= Validator::e($rfOrig) ?></div>
-                                <?php endif; ?>
+                                <?= Currency::renderEquivalent((string)$rf['amount'], $rfCurr, 2, true, '+', true) ?>
                             </td>
                             <td class="py-3 text-right text-slate-400"><?= date('M j, H:i', strtotime($rf['created_at'])) ?></td>
                         </tr>

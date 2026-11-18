@@ -43,39 +43,40 @@ $headerTagline = Helpers::setting('site_tagline', 'Grow Your Social Media');
 
     <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         <!-- Outlined White Currency Pill (₹ INR ▾) matching SwipeX reference -->
-        <div class="relative" x-data="{ openCurr: false, switching: false }">
+        <div class="relative" x-data="smmCurrencySelector(window.__SMM_CURRENCY_CFG)">
             <button type="button" @click="openCurr = !openCurr"
                     aria-label="Select display currency"
                     class="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-xs font-extrabold shadow-sm transition whitespace-nowrap">
-                <span class="text-blue-600"><?= Validator::e($activeCurr['symbol']) ?></span>
-                <span><?= Validator::e($activeCurr['code']) ?></span>
+                <span class="text-blue-600" x-text="activeSymbol"><?= Validator::e($activeCurr['symbol']) ?></span>
+                <span x-text="activeCode"><?= Validator::e($activeCurr['code']) ?></span>
                 <svg class="w-3 h-3 text-slate-500 transition-transform" :class="openCurr ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
             </button>
 
-            <div x-show="openCurr" x-cloak @click.away="openCurr = false"
+            <div x-show="openCurr" x-cloak @click.outside="openCurr = false"
                  class="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 overflow-hidden">
                 <div class="px-3.5 py-2 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                     Display Currency
                 </div>
                 <?php foreach ($enabledCurrencies as $cCode => $cRow):
-                    $isCurrent = $cCode === $activeCurr['code'];
+                    $cCodeEsc = Validator::e($cCode);
                 ?>
                 <button type="button"
                         :disabled="switching"
-                        @click.prevent="if (switching) return; switching = true; openCurr = false; window.smmSwitchCurrency('<?= Validator::e($cCode) ?>').finally(() => { switching = false; })"
-                        class="w-full px-3.5 py-2.5 text-left flex items-center justify-between gap-2 text-xs transition <?= $isCurrent ? 'bg-blue-50 text-blue-900 font-extrabold' : 'text-slate-700 hover:bg-slate-50 font-semibold' ?>">
+                        @click.stop.prevent="selectCurrency('<?= $cCodeEsc ?>')"
+                        :class="activeCode === '<?= $cCodeEsc ?>' ? 'bg-blue-50 text-blue-900 font-extrabold' : 'text-slate-700 hover:bg-slate-50 font-semibold'"
+                        class="w-full px-3.5 py-2.5 text-left flex items-center justify-between gap-2 text-xs transition">
                     <span class="flex items-center gap-2.5 min-w-0">
-                        <span class="w-7 h-7 rounded-xl <?= $isCurrent ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-600' ?> flex items-center justify-center font-extrabold shrink-0">
+                        <span :class="activeCode === '<?= $cCodeEsc ?>' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-600'"
+                              class="w-7 h-7 rounded-xl flex items-center justify-center font-extrabold shrink-0">
                             <?= Validator::e($cRow['symbol']) ?>
                         </span>
                         <span class="truncate">
                             <span class="block leading-tight"><?= Validator::e($cRow['name']) ?></span>
-                            <span class="text-[10px] <?= $isCurrent ? 'text-blue-600' : 'text-slate-400' ?> font-bold"><?= Validator::e($cRow['symbol'] . ' ' . $cCode) ?></span>
+                            <span :class="activeCode === '<?= $cCodeEsc ?>' ? 'text-blue-600' : 'text-slate-400'"
+                                  class="text-[10px] font-bold"><?= Validator::e($cRow['symbol'] . ' ' . $cCode) ?></span>
                         </span>
                     </span>
-                    <?php if ($isCurrent): ?>
-                    <svg class="w-4 h-4 text-blue-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
-                    <?php endif; ?>
+                    <svg x-show="activeCode === '<?= $cCodeEsc ?>'" x-cloak class="w-4 h-4 text-blue-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
                 <?php endforeach; ?>
             </div>

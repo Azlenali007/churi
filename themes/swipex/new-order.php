@@ -46,8 +46,10 @@ foreach ($services as $svc) {
         'description'     => (string)$svc['description'],
         'platform'        => strtolower((string)$svc['platform']),
         'type'            => $svc['type'],
-        'original_rate'   => Currency::convertFromBase((string)$pricing['original_rate'], $displayCode, 4),
-        'effective_rate'  => Currency::convertFromBase((string)$effective, $displayCode, 4),
+        'original_rate_base'  => (float)$pricing['original_rate'],
+        'effective_rate_base' => (float)$effective,
+        'original_rate'       => Currency::convertFromBase((string)$pricing['original_rate'], $displayCode, 4),
+        'effective_rate'      => Currency::convertFromBase((string)$effective, $displayCode, 4),
         'on_sale'         => $pricing['on_sale'],
         'discount_label'  => $pricing['discount_label'],
         'sale_title'      => $pricing['sale_title'],
@@ -77,9 +79,10 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
     </div>
     <div class="flex items-center gap-2 shrink-0">
         <span class="px-3 py-1 rounded-full bg-white text-slate-700 text-xs font-extrabold border border-slate-200 shadow-sm tabular-nums">
-            Wallet: <span class="text-blue-600"><?= Currency::display((string)$user['wallet_balance'], null, 2, true) ?></span>
+            Wallet: <span class="text-blue-600"><?= Currency::renderMoney((string)$user['wallet_balance'], null, 2, true) ?></span>
         </span>
-        <span class="px-3 py-1 rounded-full bg-blue-600 text-white text-xs font-extrabold">
+        <span class="px-3 py-1 rounded-full bg-blue-600 text-white text-xs font-extrabold"
+              data-smm-curr-badge="{symbol} {code}">
             <?= Validator::e($currencySymbol . ' ' . $displayCode) ?>
         </span>
     </div>
@@ -100,7 +103,19 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
     runs: 2,
     interval: 60,
     useDrip: false,
+    displayCode: '<?= Validator::e($displayCode) ?>',
+    currencySymbol: '<?= Validator::e($currencySymbol) ?>',
     init() {
+        window.addEventListener('smm:currency-changed', (ev) => {
+            const d = ev.detail || {};
+            if (!d.code) return;
+            this.displayCode = d.code;
+            this.currencySymbol = d.symbol || d.code;
+            this.services.forEach((s) => {
+                s.original_rate = window.smmConvertFromBase(s.original_rate_base, d.code);
+                s.effective_rate = window.smmConvertFromBase(s.effective_rate_base, d.code);
+            });
+        });
         if (this.serviceId > 0) {
             const target = this.services.find(s => s.id === this.serviceId);
             if (target) {
@@ -241,7 +256,7 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
                     <select name="service_id" x-model="serviceId" @change="if(currentService) quantity = currentService.min_qty" required
                             class="swipex-input px-4 py-2.5 text-sm font-semibold">
                         <template x-for="s in filteredServices" :key="s.id">
-                            <option :value="s.id" x-text="`#${s.id} — ${s.name} (<?= Validator::e($currencySymbol) ?>${fmtRate(s.effective_rate)} <?= Validator::e($displayCode) ?>/1k)${s.on_sale ? ' 🔥 SALE' : ''}`"></option>
+                            <option :value="s.id" x-text="`#${s.id} — ${s.name} (${currencySymbol}${fmtRate(s.effective_rate)} ${displayCode}/1k)${s.on_sale ? ' 🔥 SALE' : ''}`"></option>
                         </template>
                     </select>
                 </div>
@@ -298,7 +313,7 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
                             Flash Sale Applied (<span x-text="currentService?.discount_label"></span>) &mdash; Verified Server-Side
                         </div>
                     </div>
-                    <div class="text-2xl font-extrabold text-blue-600 tabular-nums"><?= Validator::e($currencySymbol) ?><span x-text="totalCharge">0.00</span> <span class="text-xs font-bold text-blue-500"><?= Validator::e($displayCode) ?></span></div>
+                    <div class="text-2xl font-extrabold text-blue-600 tabular-nums"><span x-text="currencySymbol"><?= Validator::e($currencySymbol) ?></span><span x-text="totalCharge">0.00</span> <span class="text-xs font-bold text-blue-500" x-text="displayCode"><?= Validator::e($displayCode) ?></span></div>
                 </div>
 
                 <button type="submit" class="swipex-btn-primary w-full py-3.5 rounded-full font-bold text-sm">
@@ -324,14 +339,14 @@ $preselectServiceId = (int)($_GET['service_id'] ?? ($_POST['service_id'] ?? 0));
                         <div class="text-base font-extrabold text-blue-600 mt-0.5 tabular-nums">
                             <template x-if="currentService?.on_sale">
                                 <span>
-                                    <span class="line-through text-xs text-slate-400 mr-1"><?= Validator::e($currencySymbol) ?><span x-text="fmtRate(currentService.original_rate)"></span></span>
-                                    <span class="text-rose-600"><?= Validator::e($currencySymbol) ?><span x-text="fmtRate(currentService.effective_rate)"></span></span>
+                                    <span class="line-through text-xs text-slate-400 mr-1"><span x-text="currencySymbol"></span><span x-text="fmtRate(currentService.original_rate)"></span></span>
+                                    <span class="text-rose-600"><span x-text="currencySymbol"></span><span x-text="fmtRate(currentService.effective_rate)"></span></span>
                                 </span>
                             </template>
                             <template x-if="!currentService?.on_sale">
-                                <span><?= Validator::e($currencySymbol) ?><span x-text="fmtRate(currentService?.effective_rate || 0)"></span></span>
+                                <span><span x-text="currencySymbol"></span><span x-text="fmtRate(currentService?.effective_rate || 0)"></span></span>
                             </template>
-                            <span class="text-[11px] font-bold text-blue-500 ml-1"><?= Validator::e($displayCode) ?></span>
+                            <span class="text-[11px] font-bold text-blue-500 ml-1" x-text="displayCode"><?= Validator::e($displayCode) ?></span>
                         </div>
                     </div>
                     <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-100">

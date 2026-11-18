@@ -6,23 +6,24 @@ CategoryMapper::ensureSchema();
 $ajaxAction = (string)($_REQUEST['ajax_action'] ?? '');
 
 if ($ajaxAction !== '') {
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        CSRF::requireValid();
-    }
-
-    $providerId = (int)($_REQUEST['provider_id'] ?? 0);
-    $provider = $providerId > 0 ? Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$providerId]) : null;
-
-    if ($ajaxAction === 'fetch_catalog') {
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            Helpers::jsonResponse(['ok' => false, 'error' => 'POST required.'], 405);
+    try {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            CSRF::requireValid();
         }
-        if (!$provider) {
-            Helpers::jsonResponse(['ok' => false, 'error' => 'Please select a valid provider.'], 404);
+
+        $providerId = (int)($_REQUEST['provider_id'] ?? 0);
+        $provider = $providerId > 0 ? Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$providerId]) : null;
+
+        if ($ajaxAction === 'fetch_catalog') {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                Helpers::jsonResponse(['ok' => false, 'error' => 'POST required.'], 405);
+            }
+            if (!$provider) {
+                Helpers::jsonResponse(['ok' => false, 'error' => 'Please select a valid provider.'], 404);
+            }
+            $res = CategoryMapper::fetchAndCacheCatalog($provider, (int)$admin['id']);
+            Helpers::jsonResponse($res, $res['ok'] ? 200 : 400);
         }
-        $res = CategoryMapper::fetchAndCacheCatalog($provider, (int)$admin['id']);
-        Helpers::jsonResponse($res, $res['ok'] ? 200 : 400);
-    }
 
     if ($ajaxAction === 'query_catalog') {
         if (!$provider) {
@@ -206,7 +207,17 @@ if ($ajaxAction !== '') {
         Helpers::jsonResponse(['ok' => true, 'logs' => $logs]);
     }
 
-    Helpers::jsonResponse(['ok' => false, 'error' => 'Unknown action.'], 400);
+        Helpers::jsonResponse(['ok' => false, 'error' => 'Unknown action.'], 400);
+    } catch (Throwable $e) {
+        Logger::errorFile('admin/provider-import.php AJAX error (' . $ajaxAction . '): ' . $e->getMessage());
+        Logger::workflowLog('provider_import', 'AJAX fatal exception', [
+            'action'      => $ajaxAction,
+            'provider_id' => (int)($_REQUEST['provider_id'] ?? 0),
+            'admin_id'    => (int)($admin['id'] ?? 0),
+            'error'       => $e->getMessage(),
+        ]);
+        Helpers::jsonResponse(['ok' => false, 'error' => 'Server error while processing provider import request. Please check logs.'], 500);
+    }
 }
 
 $pageTitle = 'Provider Service Import & Bulk Operations';
@@ -227,16 +238,21 @@ $importLogs = Database::fetchAll(
 require __DIR__ . '/includes/head.php';
 require __DIR__ . '/includes/sidebar.php';
 require __DIR__ . '/includes/header.php';
+$jsonFlags = JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE;
+$workbenchConfig = [
+    'providerId'           => (int)$selectedProviderId,
+    'csrfToken'            => CSRF::token(),
+    'baseCode'             => $baseCode,
+    'baseSymbol'           => $baseSymbol,
+    'defaultFallbackCatId' => (int)($categories[0]['id'] ?? 1),
+    'initialLogs'          => $importLogs,
+];
 ?>
+<script>
+window.__SMM_PROVIDER_IMPORT_CFG = <?= json_encode($workbenchConfig, $jsonFlags) ?>;
+</script>
 
-<div class="space-y-6" x-data="providerImportWorkbench({
-    providerId: <?= (int)$selectedProviderId ?>,
-    csrfToken: <?= json_encode(CSRF::token()) ?>,
-    baseCode: <?= json_encode($baseCode) ?>,
-    baseSymbol: <?= json_encode($baseSymbol) ?>,
-    defaultFallbackCatId: <?= (int)($categories[0]['id'] ?? 1) ?>,
-    initialLogs: <?= json_encode($importLogs) ?>
-})" x-init="init()">
+<div class="space-y-6" x-data="providerImportWorkbench(window.__SMM_PROVIDER_IMPORT_CFG)" x-init="init()">
 
     <!-- Top Provider & Fetch Bar -->
     <div class="smm-card rounded-3xl p-5 sm:p-6">
@@ -290,6 +306,14 @@ require __DIR__ . '/includes/header.php';
         </div>
     </div>
 
+    <!-- Inline Status / Error Feedback Banner -->
+    <div x-show="inlineNotice" x-cloak
+         :class="inlineNotice?.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : (inlineNotice?.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' : (inlineNotice?.type === 'info' ? 'bg-indigo-50 border-indigo-200 text-indigo-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'))"
+         class="rounded-2xl border px-4 py-3 text-xs font-bold flex items-center justify-between gap-3">
+        <span x-text="inlineNotice?.message"></span>
+        <button type="button" @click="inlineNotice = null" class="opacity-70 hover:opacity-100 text-base leading-none">&times;</button>
+    </div>
+
     <!-- Search, Category Filter & Selection Controls -->
     <div x-show="hasCatalog" x-cloak class="smm-card rounded-3xl p-5 space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-12 gap-3 text-xs">
@@ -337,8 +361,16 @@ require __DIR__ . '/includes/header.php';
                 <button type="button" @click="openCategoryModal = true" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 font-bold border border-indigo-200">Select / Import by Category</button>
                 <button type="button" @click="deselectAll()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold">Deselect All</button>
             </div>
-            <div class="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white font-extrabold tabular-nums">
-                Selected: <span x-text="selectedIds.length">0</span> services
+            <div class="flex items-center gap-2 shrink-0">
+                <div class="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white font-extrabold tabular-nums">
+                    Selected: <span x-text="selectedIds.length">0</span> services
+                </div>
+                <button type="button"
+                        @click="importSelectedDirect()"
+                        :disabled="runningBatch || selectedIds.length === 0"
+                        class="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-extrabold shadow-sm transition">
+                    <span x-text="runningBatch ? 'Importing...' : `Import Selected (${selectedIds.length})`"></span>
+                </button>
             </div>
         </div>
 
@@ -439,6 +471,7 @@ require __DIR__ . '/includes/header.php';
                         Updated <strong class="text-indigo-700" x-text="lastBatchSummary?.updated"></strong> &bull;
                         Deleted <strong class="text-rose-700" x-text="lastBatchSummary?.deleted"></strong> &bull;
                         Skipped <strong class="text-amber-700" x-text="lastBatchSummary?.skipped"></strong> &bull;
+                        Failed <strong class="text-rose-700" x-text="lastBatchSummary?.failed || 0"></strong> &bull;
                         Categories Created <strong class="text-purple-700" x-text="lastBatchSummary?.categories_created"></strong>
                     </div>
                     <button type="button" @click="lastBatchSummary = null" class="text-slate-400 hover:text-slate-700 font-bold">&times;</button>
@@ -729,6 +762,14 @@ function providerImportWorkbench(cfg) {
     runningBatch: false,
     batchProgress: { done: 0, total: 0 },
     lastBatchSummary: null,
+    inlineNotice: null,
+
+    notify(message, type = 'info') {
+      this.inlineNotice = { message, type };
+      if (typeof window.showToast === 'function') {
+        window.showToast(message, type);
+      }
+    },
 
     init() {
       if (this.providerId > 0) {
@@ -741,7 +782,32 @@ function providerImportWorkbench(cfg) {
       this.selectedCategories = [];
       this.page = 1;
       this.lastBatchSummary = null;
+      this.inlineNotice = null;
       this.queryCatalog();
+    },
+
+    async safeFetchJson(url, options = {}) {
+      const resp = await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...options });
+      const text = await resp.text();
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        return {
+          ok: false,
+          status: resp.status,
+          error: resp.status === 401 || resp.status === 403
+            ? 'Your admin session expired. Please refresh and sign in again.'
+            : `Unexpected server response (HTTP ${resp.status}). Please check server logs.`,
+        };
+      }
+      if (data && data.csrf_token) {
+        this.csrfToken = data.csrf_token;
+      }
+      if (!resp.ok && data && typeof data.ok === 'undefined') {
+        data.ok = false;
+      }
+      return data || { ok: false, error: `Request failed (HTTP ${resp.status}).` };
     },
 
     async postAjax(action, paramsObj = {}) {
@@ -749,9 +815,8 @@ function providerImportWorkbench(cfg) {
       for (const [k, v] of Object.entries(paramsObj)) {
         fd.append(k, String(v));
       }
-      const resp = await fetch('/admin/provider-import.php', {
+      return this.safeFetchJson('/admin/provider-import.php', {
         method: 'POST',
-        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'X-Requested-With': 'XMLHttpRequest',
@@ -759,24 +824,24 @@ function providerImportWorkbench(cfg) {
         },
         body: fd.toString(),
       });
-      return resp.json();
     },
 
     async fetchCatalog() {
       if (!this.providerId || this.fetching) return;
       this.fetching = true;
+      this.inlineNotice = null;
       try {
         const res = await this.postAjax('fetch_catalog');
         if (res.ok) {
-          window.showToast(`Fetched ${res.total_fetched} services into preview catalog (nothing imported yet).`, 'success');
+          this.notify(`Fetched ${res.total_fetched} services into preview catalog (nothing imported yet).`, 'success');
           this.page = 1;
           await this.queryCatalog();
           await this.refreshLogs();
         } else {
-          window.showToast(res.error || 'Failed to fetch provider catalog.', 'error');
+          this.notify(res.error || 'Failed to fetch provider catalog.', 'error');
         }
       } catch (e) {
-        window.showToast('Network error while fetching provider catalog.', 'error');
+        this.notify('Network error while fetching provider catalog.', 'error');
       } finally {
         this.fetching = false;
       }
@@ -795,8 +860,9 @@ function providerImportWorkbench(cfg) {
           page: String(this.page),
           per_page: String(this.perPage),
         });
-        const resp = await fetch(`/admin/provider-import.php?${qs.toString()}`, { credentials: 'same-origin', cache: 'no-store' });
-        const res = await resp.json();
+        const res = await this.safeFetchJson(`/admin/provider-import.php?${qs.toString()}`, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        });
         if (res.ok) {
           this.hasCatalog = true;
           this.fetchedAt = res.fetched_at || '';
@@ -918,22 +984,34 @@ function providerImportWorkbench(cfg) {
       }
     },
 
+    async importSelectedDirect() {
+      if (this.runningBatch) return;
+      if (this.selectedIds.length === 0) {
+        this.notify('Please select at least one service to import.', 'warning');
+        return;
+      }
+      if (!['bulk_import', 'bulk_skip_existing', 'bulk_update'].includes(this.bulkOp)) {
+        this.bulkOp = 'bulk_import';
+      }
+      await this.executeBulkOperation(true);
+    },
+
     async executeBulkOperation(skipConfirm = false) {
       if (this.runningBatch) return;
       if (this.selectedIds.length === 0) {
-        window.showToast('Please select at least one service first.', 'warning');
+        this.notify('Please select at least one service first.', 'warning');
         return;
       }
       if (this.bulkOp === 'bulk_assign_category' && !this.bulkAssignCatId) {
-        window.showToast('Please select a target platform category.', 'error');
+        this.notify('Please select a target platform category.', 'error');
         return;
       }
       if (this.bulkOp === 'bulk_update_margin' && this.bulkMarginValue === '') {
-        window.showToast('Please enter the new profit margin percentage.', 'error');
+        this.notify('Please enter the new profit margin percentage.', 'error');
         return;
       }
       if (this.bulkOp === 'bulk_update_price' && this.bulkPriceValue === '') {
-        window.showToast('Please enter the selling price or percentage adjustment.', 'error');
+        this.notify('Please enter the selling price or percentage adjustment.', 'error');
         return;
       }
       if (this.bulkOp === 'bulk_delete' && !skipConfirm) {
@@ -944,11 +1022,13 @@ function providerImportWorkbench(cfg) {
 
       this.runningBatch = true;
       this.lastBatchSummary = null;
+      this.inlineNotice = null;
       const chunkSize = 50;
       const allIds = [...this.selectedIds];
       this.batchProgress = { done: 0, total: allIds.length };
 
       const totals = { processed: 0, imported: 0, updated: 0, deleted: 0, skipped: 0, failed: 0, categories_created: 0 };
+      let batchFailedMsg = null;
 
       try {
         for (let i = 0; i < allIds.length; i += chunkSize) {
@@ -964,7 +1044,11 @@ function providerImportWorkbench(cfg) {
             price_value: this.bulkPriceValue,
           });
           if (!res.ok) {
-            window.showToast(res.error || 'Batch operation encountered an error.', 'error');
+            batchFailedMsg = res.error || 'Batch operation encountered an error.';
+            if (res.stats) {
+              totals.processed += Number(res.stats.processed || 0);
+              totals.failed += Number(res.stats.failed || 0);
+            }
             break;
           }
           const st = res.stats || {};
@@ -990,19 +1074,26 @@ function providerImportWorkbench(cfg) {
         });
 
         this.lastBatchSummary = totals;
-        window.showToast('Bulk operation completed successfully!', 'success');
+        if (batchFailedMsg) {
+          this.notify(batchFailedMsg, 'error');
+        } else if (totals.failed > 0 && totals.imported === 0 && totals.updated === 0) {
+          this.notify(`Import failed for ${totals.failed} service(s). Check database or workflow logs.`, 'error');
+        } else {
+          this.notify(`Operation complete: Imported ${totals.imported}, Updated ${totals.updated}, Skipped ${totals.skipped}, Failed ${totals.failed}.`, 'success');
+        }
         await this.queryCatalog();
         await this.refreshLogs();
       } catch (e) {
-        window.showToast('Unexpected error during batch processing.', 'error');
+        this.notify('Unexpected network error during batch processing.', 'error');
       } finally {
         this.runningBatch = false;
       }
     },
 
     async refreshLogs() {
-      const resp = await fetch('/admin/provider-import.php?ajax_action=recent_logs', { credentials: 'same-origin', cache: 'no-store' });
-      const res = await resp.json();
+      const res = await this.safeFetchJson('/admin/provider-import.php?ajax_action=recent_logs', {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      });
       if (res.ok && res.logs) {
         this.importLogs = res.logs;
       }

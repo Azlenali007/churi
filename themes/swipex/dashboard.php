@@ -82,6 +82,7 @@ foreach ($quickServicesRaw as $qs) {
     if (!$p['on_sale'] && Currency::cmp($userDiscount, '0', 2) > 0) {
         $effBase = Currency::applyDiscount($effBase, 'percent', $userDiscount);
     }
+    $qs['effective_rate_base'] = (float)$effBase;
     $qs['effective_rate_display'] = (float)Currency::convertFromBase($effBase, $displayCode, 4);
     $qs['on_sale'] = $p['on_sale'];
     $quickServices[] = $qs;
@@ -174,7 +175,7 @@ $swipeCards = [
                 <?= number_format((int)($stats['total_orders'] ?? 0)) ?> Orders
             </span>
             <span class="px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-200/70 tabular-nums">
-                Spent <?= Currency::display((string)$user['total_spent'], null, 2, true) ?>
+                <?= Currency::renderMoney((string)$user['total_spent'], null, 2, true, 'Spent ') ?>
             </span>
         </div>
     </div>
@@ -184,7 +185,7 @@ $swipeCards = [
         <div class="min-w-0">
             <div class="text-xs font-semibold text-slate-400">Your Balance</div>
             <div class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-0.5 tabular-nums truncate">
-                <?= Currency::display((string)$user['wallet_balance'], null, 2, true) ?>
+                <?= Currency::renderMoney((string)$user['wallet_balance'], null, 2, true) ?>
             </div>
         </div>
         <a href="/user/add-funds.php"
@@ -305,7 +306,7 @@ $swipeCards = [
             <div class="font-extrabold text-slate-900 text-sm"><?= Validator::e($pName) ?></div>
             <div class="text-[11px] text-slate-400 mb-2"><?= (int)$pp['svc_count'] ?> Services</div>
             <div class="inline-block px-3 py-1 rounded-full bg-blue-100/80 text-blue-700 text-[11px] font-extrabold tabular-nums">
-                From <?= Currency::displayRate((string)$pp['min_rate'], null, false) ?>
+                <?= Currency::renderRate((string)$pp['min_rate'], null, false, 'From ') ?>
             </div>
         </a>
         <?php endforeach; ?>
@@ -323,7 +324,20 @@ $swipeCards = [
                 categoryId: <?= !empty($quickCategories) ? (int)$quickCategories[0]['id'] : 0 ?>,
                 serviceId: 0,
                 qty: 100,
-                init() { this.syncFirstService(); },
+                activeCode: '<?= Validator::e($displayCode) ?>',
+                activeSymbol: '<?= Validator::e($displaySymbol) ?>',
+                init() {
+                    this.syncFirstService();
+                    window.addEventListener('smm:currency-changed', (ev) => {
+                        const d = ev.detail || {};
+                        if (!d.code) return;
+                        this.activeCode = d.code;
+                        this.activeSymbol = d.symbol || d.code;
+                        this.services.forEach((s) => {
+                            s.effective_rate_display = window.smmConvertFromBase(s.effective_rate_base, d.code);
+                        });
+                    });
+                },
                 get filtered() { return this.services.filter(s => Number(s.category_id) === Number(this.categoryId)); },
                 get activeSvc() { return this.services.find(s => Number(s.id) === Number(this.serviceId)) || null; },
                 get total() {
@@ -364,7 +378,7 @@ $swipeCards = [
                 </div>
                 <div class="flex items-center justify-between pt-1">
                     <div class="text-xs text-slate-500">
-                        Estimated Charge: <strong class="text-sm text-blue-600 tabular-nums"><?= Validator::e($displaySymbol) ?><span x-text="total">0.00</span> <?= Validator::e($displayCode) ?></strong>
+                        Estimated Charge: <strong class="text-sm text-blue-600 tabular-nums"><span x-text="activeSymbol"><?= Validator::e($displaySymbol) ?></span><span x-text="total">0.00</span> <span x-text="activeCode"><?= Validator::e($displayCode) ?></span></strong>
                     </div>
                     <button type="submit" class="swipex-btn-primary px-5 py-2.5 rounded-full text-xs font-bold">
                         Place Order
@@ -389,10 +403,6 @@ $swipeCards = [
                     <?php foreach ($recentOrders as $ord):
                         $ordCurr = (string)($ord['currency_code'] ?? $baseCode);
                         if ($ordCurr === '') $ordCurr = $baseCode;
-                        $ordOrig = Currency::formatRaw((string)$ord['charge'], $ordCurr, 2, true);
-                        $ordDisp = ($displayCode !== $ordCurr)
-                            ? Currency::display(Currency::convert((string)$ord['charge'], $ordCurr, $baseCode, 4), $displayCode, 2, true)
-                            : $ordOrig;
                     ?>
                     <a href="/user/orders.php?search=<?= (int)$ord['id'] ?>"
                        class="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 hover:bg-blue-50/60 border border-slate-200/70 transition">
@@ -404,11 +414,8 @@ $swipeCards = [
                             </div>
                         </div>
                         <div class="flex items-center gap-2.5 shrink-0">
-                            <div class="text-right hidden sm:block tabular-nums">
-                                <div class="text-xs font-extrabold text-slate-900"><?= Validator::e($ordDisp) ?></div>
-                                <?php if ($displayCode !== $ordCurr): ?>
-                                    <div class="text-[10px] text-slate-400">Orig: <?= Validator::e($ordOrig) ?></div>
-                                <?php endif; ?>
+                            <div class="text-right hidden sm:block tabular-nums text-xs font-extrabold text-slate-900">
+                                <?= Currency::renderEquivalent((string)$ord['charge'], $ordCurr, 2, true, '', true) ?>
                             </div>
                             <?= Helpers::statusBadge((string)$ord['status']) ?>
                         </div>
@@ -425,7 +432,7 @@ $swipeCards = [
             <div class="flex items-center justify-between mb-4">
                 <div>
                     <h2 class="text-base font-extrabold text-slate-900">Spending Overview</h2>
-                    <div class="text-xs text-slate-500 tabular-nums">Period Total: <strong class="text-blue-600"><?= Currency::display($periodTotalBase, null, 2, true) ?></strong></div>
+                    <div class="text-xs text-slate-500 tabular-nums">Period Total: <strong class="text-blue-600"><?= Currency::renderMoney($periodTotalBase, null, 2, true) ?></strong></div>
                 </div>
                 <div class="flex gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold">
                     <a href="?range=7" class="px-2.5 py-1 rounded-lg <?= $daysBack === 7 ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500' ?>">7D</a>
@@ -460,7 +467,7 @@ $swipeCards = [
                 <path d="<?= $linePath ?>" fill="none" stroke="#2563EB" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
                 <?php foreach ($coords as $c): ?>
                     <circle cx="<?= $c['x'] ?>" cy="<?= $c['y'] ?>" r="4" fill="#fff" stroke="#2563EB" stroke-width="2.5">
-                        <title><?= Validator::e($c['label']) ?>: <?= Currency::display($c['base_str'], null, 2, true) ?></title>
+                        <title data-smm-money="amount" data-base-amount="<?= Validator::e(Currency::normalize($c['base_str'], 4)) ?>" data-decimals="2" data-show-code="1" data-prefix="<?= Validator::e($c['label'] . ': ') ?>"><?= Validator::e($c['label']) ?>: <?= Currency::display($c['base_str'], null, 2, true) ?></title>
                     </circle>
                 <?php endforeach; ?>
             </svg>
@@ -502,23 +509,15 @@ $swipeCards = [
                         $isCredit = in_array($tx['type'], ['credit','refund','referral_bonus','admin_add','payment'], true);
                         $txCurr = (string)($tx['currency_code'] ?? $baseCode);
                         if ($txCurr === '') $txCurr = $baseCode;
-                        $txOrig = Currency::formatRaw((string)$tx['amount'], $txCurr, 2, true);
-                        $txDisp = ($displayCode !== $txCurr)
-                            ? Currency::display(Currency::convert((string)$tx['amount'], $txCurr, $baseCode, 4), $displayCode, 2, true)
-                            : $txOrig;
+                        $sign = $isCredit ? '+' : '-';
                     ?>
                     <div class="py-2.5 flex items-center justify-between gap-2 text-xs">
                         <div class="min-w-0">
                             <div class="font-semibold text-slate-800 truncate"><?= Validator::e($tx['description']) ?></div>
                             <div class="text-[11px] text-slate-400"><?= Helpers::timeAgo($tx['created_at']) ?></div>
                         </div>
-                        <div class="text-right shrink-0 tabular-nums">
-                            <div class="font-extrabold <?= $isCredit ? 'text-emerald-600' : 'text-rose-600' ?>">
-                                <?= $isCredit ? '+' : '-' ?><?= Validator::e($txDisp) ?>
-                            </div>
-                            <?php if ($displayCode !== $txCurr): ?>
-                                <div class="text-[10px] text-slate-400">Orig: <?= $isCredit ? '+' : '-' ?><?= Validator::e($txOrig) ?></div>
-                            <?php endif; ?>
+                        <div class="text-right shrink-0 tabular-nums font-extrabold <?= $isCredit ? 'text-emerald-600' : 'text-rose-600' ?>">
+                            <?= Currency::renderEquivalent((string)$tx['amount'], $txCurr, 2, true, $sign, true) ?>
                         </div>
                     </div>
                     <?php endforeach; ?>

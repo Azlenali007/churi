@@ -43,10 +43,17 @@ class CSRF
     public static function requireValid(): void
     {
         if (!self::verify()) {
+            Logger::workflowLog('security', 'CSRF token verification failed', [
+                'uri'            => (string)($_SERVER['REQUEST_URI'] ?? ''),
+                'method'         => (string)($_SERVER['REQUEST_METHOD'] ?? ''),
+                'session_active' => session_status() === PHP_SESSION_ACTIVE,
+                'has_post_token' => !empty($_POST['_csrf_token']),
+                'has_hdr_token'  => !empty($_SERVER['HTTP_X_CSRF_TOKEN']),
+            ]);
             http_response_code(419);
             if (self::isAjax()) {
-                header('Content-Type: application/json');
-                echo json_encode(['ok' => false, 'error' => 'Invalid or expired security token. Please refresh the page.']);
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['ok' => false, 'error' => 'Invalid or expired security token. Please refresh the page and try again.']);
                 exit;
             }
             die('Security verification failed (CSRF token mismatch). Please go back, refresh the page, and try again.');
@@ -55,8 +62,10 @@ class CSRF
 
     private static function isAjax(): bool
     {
-        return (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
-            || str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')
-            || str_contains($_SERVER['REQUEST_URI'] ?? '', '/api/');
+        return (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+            || str_contains((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+            || !empty($_REQUEST['ajax_action'])
+            || (($_REQUEST['action'] ?? '') === 'set_currency')
+            || str_contains((string)($_SERVER['REQUEST_URI'] ?? ''), '/api/');
     }
 }

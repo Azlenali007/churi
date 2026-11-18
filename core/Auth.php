@@ -16,8 +16,13 @@ class Auth
             ? ($config['admin_session'] ?? 'SMMPRO_ADMIN_SESSID')
             : ($config['session_name'] ?? 'SMMPRO_SESSID');
 
+        $cfHttps = isset($_SERVER['HTTP_CF_VISITOR']) && str_contains((string)$_SERVER['HTTP_CF_VISITOR'], '"https"');
         $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+            || strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https'
+            || strtolower((string)($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '')) === 'on'
+            || strtolower((string)($_SERVER['REQUEST_SCHEME'] ?? '')) === 'https'
+            || ((int)($_SERVER['SERVER_PORT'] ?? 80) === 443)
+            || $cfHttps;
 
         session_name($name);
         session_set_cookie_params([
@@ -120,10 +125,21 @@ class Auth
         return $user;
     }
 
+    public static function isAjaxRequest(): bool
+    {
+        return (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+            || str_contains((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json')
+            || !empty($_REQUEST['ajax_action'])
+            || str_contains((string)($_SERVER['REQUEST_URI'] ?? ''), '/api/');
+    }
+
     public static function requireUser(): array
     {
         $user = self::user();
         if (!$user) {
+            if (self::isAjaxRequest()) {
+                Helpers::jsonResponse(['ok' => false, 'error' => 'Session expired. Please log in again.'], 401);
+            }
             Helpers::setFlash('error', 'Please log in to access your dashboard.');
             Helpers::redirect('/login.php');
         }
@@ -215,9 +231,15 @@ class Auth
     {
         $admin = self::admin();
         if (!$admin) {
+            if (self::isAjaxRequest()) {
+                Helpers::jsonResponse(['ok' => false, 'error' => 'Admin session expired. Please sign in again.'], 401);
+            }
             Helpers::redirect('/admin/login.php');
         }
         if ($permission !== null && !self::adminHasPermission($admin, $permission)) {
+            if (self::isAjaxRequest()) {
+                Helpers::jsonResponse(['ok' => false, 'error' => 'Access denied: missing permission (' . $permission . ').'], 403);
+            }
             http_response_code(403);
             die('Access Denied: You do not have permission (' . Validator::e($permission) . ') for this section.');
         }

@@ -14,6 +14,9 @@ $title = ($pageTitle ?? 'Dashboard') . ' — ' . $siteName;
     <link rel="icon" href="<?= Validator::e($siteFavicon) ?>">
     <?php endif; ?>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        window.__SMM_CURRENCY_CFG = <?= json_encode(Currency::getClientConfig($user ?? null), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>;
+    </script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="/assets/css/app.css">
 </head>

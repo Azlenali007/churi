@@ -22,7 +22,7 @@ $loginLogs = Database::fetchAll(
         </div>
     </div>
     <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm tabular-nums">
-        Balance: <?= Currency::display((string)$user['wallet_balance'], null, 2, true) ?>
+        <?= Currency::renderMoney((string)$user['wallet_balance'], null, 2, true, 'Balance: ') ?>
     </span>
 </div>
 

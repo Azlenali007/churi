@@ -43,7 +43,27 @@ $baseCode = Currency::getBaseCode();
     <a href="/user/new-order.php" class="swipex-btn-primary px-4 py-2 rounded-full text-xs font-bold shrink-0">+ New Order</a>
 </div>
 
-<div class="swipex-card rounded-3xl p-5 sm:p-6 min-w-0 max-w-full overflow-hidden" x-data="{ detailOrder: null }">
+<div class="swipex-card rounded-3xl p-5 sm:p-6 min-w-0 max-w-full overflow-hidden"
+     x-data="{
+        detailOrder: null,
+        activeCode: '<?= Validator::e($displayCode) ?>',
+        init() {
+            window.addEventListener('smm:currency-changed', (ev) => {
+                if (ev.detail && ev.detail.code) this.activeCode = ev.detail.code;
+            });
+        },
+        fmtOrderMoney(raw, origCurr) {
+            if (!this.detailOrder || raw === undefined || raw === null) return '';
+            const curr = String(origCurr || '<?= Validator::e($baseCode) ?>').toUpperCase();
+            const conv = window.smmConvertCurrency(raw, curr, this.activeCode);
+            const main = window.smmFormatCurrency(conv, this.activeCode, 2, true, false);
+            if (this.activeCode !== curr) {
+                const orig = window.smmFormatCurrency(Number(raw || 0), curr, 2, true, false);
+                return `${main} (Orig: ${orig})`;
+            }
+            return main;
+        }
+     }">
     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5 min-w-0">
         <div class="flex flex-wrap gap-2">
             <a href="/user/orders.php?status=all" class="px-3.5 py-1.5 rounded-full text-xs font-bold transition <?= $statusFilter === 'all' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-blue-50' ?>">All</a>
@@ -80,16 +100,7 @@ $baseCode = Currency::getBaseCode();
                     <?php foreach ($orders as $ord):
                         $oCurr = (string)($ord['currency_code'] ?? $baseCode);
                         if ($oCurr === '') $oCurr = $baseCode;
-                        $chargeFormatted = Currency::formatRaw((string)$ord['charge'], $oCurr, 2, true);
-                        $unitFormatted = Currency::formatRaw((string)$ord['unit_price'], $oCurr, 2, true);
-                        $chargeDisplayEq = ($displayCode !== $oCurr)
-                            ? Currency::display(Currency::convert((string)$ord['charge'], $oCurr, $baseCode, 4), $displayCode, 2, true)
-                            : null;
-                        $unitDisplayEq = ($displayCode !== $oCurr)
-                            ? Currency::display(Currency::convert((string)$ord['unit_price'], $oCurr, $baseCode, 4), $displayCode, 2, true)
-                            : null;
-                        $ord['charge_formatted'] = $chargeDisplayEq ? ($chargeDisplayEq . ' (Orig: ' . $chargeFormatted . ')') : $chargeFormatted;
-                        $ord['unit_formatted'] = $unitDisplayEq ? ($unitDisplayEq . ' (Orig: ' . $unitFormatted . ')') : $unitFormatted;
+                        $ord['orig_currency'] = $oCurr;
                     ?>
                     <tr class="hover:bg-blue-50/40">
                         <td class="py-3.5 pr-3 font-bold text-slate-800 whitespace-nowrap">#<?= (int)$ord['id'] ?></td>
@@ -98,18 +109,11 @@ $baseCode = Currency::getBaseCode();
                             <?= Validator::e($ord['link']) ?>
                         </td>
                         <td class="py-3.5 pr-3 font-bold text-slate-900 tabular-nums whitespace-nowrap">
-                            <?php if ($chargeDisplayEq): ?>
-                                <div><?= Validator::e($chargeDisplayEq) ?></div>
-                                <div class="text-[10px] font-semibold text-slate-400">Orig: <?= Validator::e($chargeFormatted) ?></div>
-                            <?php else: ?>
-                                <div><?= Validator::e($chargeFormatted) ?></div>
-                            <?php endif; ?>
-                            <?php if (Currency::cmp((string)$ord['refunded_amount'], '0', 4) > 0):
-                                $refDisplay = ($displayCode !== $oCurr)
-                                    ? Currency::display(Currency::convert((string)$ord['refunded_amount'], $oCurr, $baseCode, 4), $displayCode, 2, true)
-                                    : Currency::formatRaw((string)$ord['refunded_amount'], $oCurr, 2, true);
-                            ?>
-                                <div class="text-[10px] text-emerald-600">Refunded: <?= Validator::e($refDisplay) ?></div>
+                            <?= Currency::renderEquivalent((string)$ord['charge'], $oCurr, 2, true, '', true) ?>
+                            <?php if (Currency::cmp((string)$ord['refunded_amount'], '0', 4) > 0): ?>
+                                <div class="text-[10px] text-emerald-600">
+                                    <?= Currency::renderEquivalent((string)$ord['refunded_amount'], $oCurr, 2, true, 'Refunded: ', false) ?>
+                                </div>
                             <?php endif; ?>
                         </td>
                         <td class="py-3.5 pr-3 text-xs text-slate-600 whitespace-nowrap">
@@ -169,8 +173,8 @@ $baseCode = Currency::getBaseCode();
                     <div class="p-3 rounded-xl bg-slate-50"><strong>Remains</strong><div x-text="detailOrder?.remains"></div></div>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
-                    <div class="p-3 rounded-xl bg-slate-50"><strong>Unit Rate / 1k</strong><div class="font-bold text-slate-900 tabular-nums" x-text="detailOrder?.unit_formatted || detailOrder?.unit_price"></div></div>
-                    <div class="p-3 rounded-xl bg-slate-50"><strong>Total Charge</strong><div class="font-bold text-blue-600 tabular-nums" x-text="detailOrder?.charge_formatted || detailOrder?.charge"></div></div>
+                    <div class="p-3 rounded-xl bg-slate-50"><strong>Unit Rate / 1k</strong><div class="font-bold text-slate-900 tabular-nums" x-text="fmtOrderMoney(detailOrder?.unit_price, detailOrder?.orig_currency)"></div></div>
+                    <div class="p-3 rounded-xl bg-slate-50"><strong>Total Charge</strong><div class="font-bold text-blue-600 tabular-nums" x-text="fmtOrderMoney(detailOrder?.charge, detailOrder?.orig_currency)"></div></div>
                 </div>
             </div>
         </div>

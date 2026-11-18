@@ -50,7 +50,8 @@ foreach ($services as $svc) {
             <p class="text-xs text-slate-500">Live rates per 1,000, min/max limits, and refill/cancel guarantees.</p>
         </div>
     </div>
-    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm shrink-0">
+    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm shrink-0"
+          data-smm-curr-badge="Rates in {symbol} {code}">
         Rates in <?= Validator::e($activeCurr['symbol'] . ' ' . $activeCurr['code']) ?>
     </span>
 </div>
@@ -89,7 +90,7 @@ foreach ($services as $svc) {
                             <tr class="border-b border-slate-100 text-xs uppercase text-slate-400">
                                 <th class="py-2.5 px-3">ID</th>
                                 <th class="py-2.5 px-3">Service</th>
-                                <th class="py-2.5 px-3">Rate / 1k (<?= Validator::e($activeCurr['code']) ?>)</th>
+                                <th class="py-2.5 px-3" data-smm-curr-badge="Rate / 1k ({code})">Rate / 1k (<?= Validator::e($activeCurr['code']) ?>)</th>
                                 <th class="py-2.5 px-3">Min / Max</th>
                                 <th class="py-2.5 px-3">Support</th>
                                 <th class="py-2.5 px-3 text-right">Action</th>
@@ -110,10 +111,10 @@ foreach ($services as $svc) {
                                 </td>
                                 <td class="py-3 px-3 font-bold tabular-nums whitespace-nowrap">
                                     <?php if ($p['on_sale']): ?>
-                                        <span class="line-through text-xs text-slate-400 mr-1"><?= Currency::displayRate($p['original_rate'], null, true) ?></span>
-                                        <span class="text-rose-600"><?= Currency::displayRate($p['effective_rate'], null, true) ?></span>
+                                        <span class="line-through text-xs text-slate-400 mr-1"><?= Currency::renderRate($p['original_rate'], null, true) ?></span>
+                                        <span class="text-rose-600"><?= Currency::renderRate($p['effective_rate'], null, true) ?></span>
                                     <?php else: ?>
-                                        <span class="text-blue-600"><?= Currency::displayRate($p['effective_rate'], null, true) ?></span>
+                                        <span class="text-blue-600"><?= Currency::renderRate($p['effective_rate'], null, true) ?></span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="py-3 px-3 text-xs text-slate-600 whitespace-nowrap"><?= number_format((int)$s['min_qty']) ?> - <?= number_format((int)$s['max_qty']) ?></td>

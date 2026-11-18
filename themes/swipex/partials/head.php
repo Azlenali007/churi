@@ -16,6 +16,9 @@ $title = ($pageTitle ?? 'Dashboard') . ' — ' . $siteName;
     <link rel="stylesheet" href="/assets/css/app.css">
     <link rel="stylesheet" href="/assets/css/swipex.css">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        window.__SMM_CURRENCY_CFG = <?= json_encode(Currency::getClientConfig($user ?? null), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?>;
+    </script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
 </head>
 <body class="swipex-body text-slate-900 antialiased" x-data="{ sidebarOpen: false }">

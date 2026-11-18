@@ -63,4 +63,24 @@ class Logger
         $line = sprintf("[%s] [%s] %s\n", date('Y-m-d H:i:s'), Helpers::clientIp(), $message);
         @file_put_contents(LOGS_PATH . '/php_errors.log', $line, FILE_APPEND | LOCK_EX);
     }
+
+    public static function workflowLog(string $channel, string $message, array $context = []): void
+    {
+        if (!is_dir(LOGS_PATH)) {
+            @mkdir(LOGS_PATH, 0755, true);
+        }
+        $redacted = [];
+        $blockedKeys = ['api_key', 'api_key_enc', 'key', 'password', 'password_hash', '_csrf_token', 'token', 'secret', 'session_id', 'razorpay_key_secret'];
+        foreach ($context as $k => $v) {
+            $lk = strtolower((string)$k);
+            if (in_array($lk, $blockedKeys, true) || str_contains($lk, 'secret') || str_contains($lk, 'password') || str_contains($lk, 'token')) {
+                $redacted[$k] = '[REDACTED]';
+            } else {
+                $redacted[$k] = $v;
+            }
+        }
+        $ctxStr = !empty($redacted) ? ' | ' . json_encode($redacted, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : '';
+        $line = sprintf("[%s] [%s] [%s] %s%s\n", date('Y-m-d H:i:s'), strtoupper($channel), Helpers::clientIp(), $message, $ctxStr);
+        @file_put_contents(LOGS_PATH . '/workflow_debug.log', $line, FILE_APPEND | LOCK_EX);
+    }
 }

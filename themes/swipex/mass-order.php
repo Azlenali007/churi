@@ -12,10 +12,11 @@ $rateMap = [];
 foreach ($services as $s) {
     $p = FlashSale::getServicePricing($s);
     $rateMap[(int)$s['id']] = [
-        'name' => $s['name'],
-        'rate' => (float)Currency::convertFromBase((string)$p['effective_rate'], $displayCode, 4),
-        'min'  => (int)$s['min_qty'],
-        'max'  => (int)$s['max_qty'],
+        'name'      => $s['name'],
+        'rate_base' => (float)$p['effective_rate'],
+        'rate'      => (float)Currency::convertFromBase((string)$p['effective_rate'], $displayCode, 4),
+        'min'       => (int)$s['min_qty'],
+        'max'       => (int)$s['max_qty'],
     ];
 }
 ?>
@@ -30,7 +31,8 @@ foreach ($services as $s) {
             <p class="text-xs text-slate-500">Submit batch orders in one click: <code class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-bold">service_id | link | quantity</code></p>
         </div>
     </div>
-    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm">
+    <span class="px-3 py-1 rounded-full bg-white text-blue-700 text-xs font-extrabold border border-blue-200/80 shadow-sm"
+          data-smm-curr-badge="{symbol} {code}">
         <?= Validator::e($currencySymbol . ' ' . $displayCode) ?>
     </span>
 </div>
@@ -39,6 +41,19 @@ foreach ($services as $s) {
      x-data="{
         rates: <?= Validator::e(json_encode($rateMap)) ?>,
         raw: '',
+        displayCode: '<?= Validator::e($displayCode) ?>',
+        currencySymbol: '<?= Validator::e($currencySymbol) ?>',
+        init() {
+            window.addEventListener('smm:currency-changed', (ev) => {
+                const d = ev.detail || {};
+                if (!d.code) return;
+                this.displayCode = d.code;
+                this.currencySymbol = d.symbol || d.code;
+                Object.values(this.rates).forEach((svc) => {
+                    svc.rate = window.smmConvertFromBase(svc.rate_base, d.code);
+                });
+            });
+        },
         get parsed() {
             const lines = this.raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
             let total = 0; let valid = 0;
@@ -86,7 +101,7 @@ foreach ($services as $s) {
                     Valid Lines: <strong x-text="parsed.valid">0</strong>
                 </div>
                 <div class="text-lg font-extrabold text-blue-600 tabular-nums">
-                    Estimated Total: <?= Validator::e($currencySymbol) ?><span x-text="parsed.total">0.00</span> <span class="text-xs font-bold text-blue-500"><?= Validator::e($displayCode) ?></span>
+                    Estimated Total: <span x-text="currencySymbol"><?= Validator::e($currencySymbol) ?></span><span x-text="parsed.total">0.00</span> <span class="text-xs font-bold text-blue-500" x-text="displayCode"><?= Validator::e($displayCode) ?></span>
                 </div>
             </div>
 
@@ -106,7 +121,7 @@ foreach ($services as $s) {
                 <div class="p-3 rounded-2xl border text-xs" :class="r.err ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50/70 border-emerald-200'">
                     <div class="flex items-center justify-between font-bold">
                         <span x-text="`Line ${r.line}: #${r.sid || '?'}`"></span>
-                        <span x-show="!r.err" class="text-emerald-700 tabular-nums"><?= Validator::e($currencySymbol) ?><span x-text="r.cost.toFixed(2)"></span> <?= Validator::e($displayCode) ?></span>
+                        <span x-show="!r.err" class="text-emerald-700 tabular-nums"><span x-text="currencySymbol"></span><span x-text="r.cost.toFixed(2)"></span> <span x-text="displayCode"></span></span>
                     </div>
                     <div class="text-slate-600 truncate mt-0.5" x-text="r.svcName"></div>
                     <div x-show="r.err" class="text-rose-600 font-semibold mt-0.5" x-text="r.err"></div>

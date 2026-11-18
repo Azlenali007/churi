@@ -53,8 +53,8 @@ if ($activeSale):
             <div>
                 <div class="text-[11px] text-purple-100 font-medium truncate max-w-[160px]"><?= Validator::e($sample['name']) ?></div>
                 <div class="flex items-baseline gap-2 tabular-nums">
-                    <span class="text-xs line-through text-purple-200/80"><?= Currency::displayRate((string)$activeSale['original_price'], null, true) ?></span>
-                    <span class="text-lg font-extrabold text-amber-300"><?= Currency::displayRate((string)$activeSale['sale_price'], null, true) ?></span>
+                    <span class="text-xs line-through text-purple-200/80"><?= Currency::renderRate((string)$activeSale['original_price'], null, true) ?></span>
+                    <span class="text-lg font-extrabold text-amber-300"><?= Currency::renderRate((string)$activeSale['sale_price'], null, true) ?></span>
                     <span class="text-[10px] text-purple-200">/1k</span>
                 </div>
             </div>
