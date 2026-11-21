@@ -834,16 +834,15 @@ class FiveSimAdapter implements OtpProviderInterface
             return null;
         };
 
-        foreach ($data as $topKey => $topVal) {
-            if (!is_array($topVal)) {
-                continue;
-            }
-            // Case 1: Standard nested map: topKey = countryCode, secondKey = serviceCode
-            $directLeaf = $extractCostCount($topVal);
-            if ($directLeaf !== null && $countryCode !== null && $countryCode !== '') {
-                // Provider returned { "<service>": { "cost": ..., "count": ... } } for a single country query
-                $cCode = (string)$countryCode;
-                $sCode = (string)$topKey;
+        // Handle flat root-level single-pair response { "cost": ..., "count": ... } when both country & service were requested
+        if ((array_key_exists('cost', $data) || array_key_exists('price', $data))
+            && $countryCode !== null && trim($countryCode) !== ''
+            && $serviceCode !== null && trim($serviceCode) !== ''
+        ) {
+            $rootLeaf = $extractCostCount($data);
+            if ($rootLeaf !== null) {
+                $cCode = trim($countryCode);
+                $sCode = trim($serviceCode);
                 $cInfo = FiveSimCatalogReference::describeCountry($cCode);
                 $sInfo = FiveSimCatalogReference::describeService($sCode);
                 $countriesMap[$cCode] = $cInfo;
@@ -858,12 +857,57 @@ class FiveSimAdapter implements OtpProviderInterface
                     'service_slug' => $sInfo['slug'],
                     'icon_key'     => $sInfo['icon_key'],
                     'is_popular'   => $sInfo['is_popular'],
-                    'operator'     => $directLeaf['operator'],
-                    'cost'         => $directLeaf['cost'],
-                    'count'        => $directLeaf['count'],
+                    'operator'     => $rootLeaf['operator'],
+                    'cost'         => $rootLeaf['cost'],
+                    'count'        => $rootLeaf['count'],
                     'currency'     => $currency,
                 ];
+                return [
+                    'ok'               => true,
+                    'items'            => $items,
+                    'countries'        => array_values($countriesMap),
+                    'currency'         => $currency,
+                    'http_code'        => (int)$res['http_code'],
+                    'response_time_ms' => (int)$res['response_time_ms'],
+                ];
+            }
+        }
+
+        $trimmedCountryFilter = $countryCode !== null ? trim($countryCode) : '';
+
+        foreach ($data as $topKey => $topVal) {
+            if (!is_array($topVal)) {
                 continue;
+            }
+            // Case 1: Flat single-country response { "<service>": { "cost": ..., "count": ... } }
+            // Only match when topKey is NOT the requested country code itself AND topVal directly holds cost/price keys.
+            $isDirectCostLeaf = array_key_exists('cost', $topVal) || array_key_exists('price', $topVal);
+            if ($isDirectCostLeaf && $trimmedCountryFilter !== '' && strcasecmp((string)$topKey, $trimmedCountryFilter) !== 0) {
+                $directLeaf = $extractCostCount($topVal);
+                if ($directLeaf !== null) {
+                    $cCode = $trimmedCountryFilter;
+                    $sCode = (string)$topKey;
+                    $cInfo = FiveSimCatalogReference::describeCountry($cCode);
+                    $sInfo = FiveSimCatalogReference::describeService($sCode);
+                    $countriesMap[$cCode] = $cInfo;
+                    $items[] = [
+                        'country_code' => $cCode,
+                        'country_name' => $cInfo['name'],
+                        'country_iso'  => $cInfo['iso_code'],
+                        'country_dial' => $cInfo['dial_code'],
+                        'country_flag' => $cInfo['flag_emoji'],
+                        'service_code' => $sCode,
+                        'service_name' => $sInfo['name'],
+                        'service_slug' => $sInfo['slug'],
+                        'icon_key'     => $sInfo['icon_key'],
+                        'is_popular'   => $sInfo['is_popular'],
+                        'operator'     => $directLeaf['operator'],
+                        'cost'         => $directLeaf['cost'],
+                        'count'        => $directLeaf['count'],
+                        'currency'     => $currency,
+                    ];
+                    continue;
+                }
             }
 
             $cCode = (string)$topKey;

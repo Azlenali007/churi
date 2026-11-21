@@ -42,19 +42,19 @@ if ($method === 'POST') {
     }
 }
 
-// Lightweight per-admin rate limit for external API sync actions (prevent accidental rapid hammering)
+$providerId = (int)($input['provider_id'] ?? 0);
+
+// Lightweight per-admin, per-provider rate limit for external API sync actions (prevent accidental rapid hammering)
 $heavyActions = ['test_connection', 'check_balance', 'fetch_preview', 'run_import', 'sync_prices', 'sync_availability'];
 if (in_array($action, $heavyActions, true)) {
-    $rateKey = '_otp_prov_rl_' . $action;
+    $rateKey = '_otp_prov_rl_' . $action . '_' . $providerId;
     $lastTs = (float)($_SESSION[$rateKey] ?? 0);
     $nowTs = microtime(true);
     if (($nowTs - $lastTs) < 1.0) {
-        Helpers::jsonResponse(['ok' => false, 'error' => 'Please wait a moment before sending another provider API request.'], 429);
+        Helpers::jsonResponse(['ok' => false, 'error' => 'Please wait a moment before sending another request to this provider.'], 429);
     }
     $_SESSION[$rateKey] = $nowTs;
 }
-
-$providerId = (int)($input['provider_id'] ?? 0);
 
 /**
  * Helper to fetch live provider card stats without ever exposing encrypted credentials.

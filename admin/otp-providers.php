@@ -319,8 +319,8 @@ require __DIR__ . '/includes/header.php';
 
         <div class="grid md:grid-cols-2 gap-6" x-show="providers.length > 0">
             <template x-for="p in providers" :key="p.id">
-                <div class="smm-card rounded-3xl p-6 flex flex-col justify-between gap-4 border border-purple-100/80">
-                    <div class="space-y-4">
+                <div class="smm-card rounded-3xl p-4 sm:p-6 flex flex-col justify-between gap-4 border border-purple-100/80 min-w-0 overflow-hidden">
+                    <div class="space-y-4 min-w-0">
                         <!-- Card Header -->
                         <div class="flex items-start justify-between gap-3">
                             <div class="min-w-0">
@@ -1302,8 +1302,29 @@ function otpProviderHub() {
                 }
                 this.importReport = data;
                 this.showNotice('success', `Import complete (${mode}): ${data.new_imported || 0} new, ${data.existing_updated || 0} updated, ${data.prices_updated || 0} prices updated.`);
-                if (this.previewMeta) {
-                    await this.fetchServicePreview();
+                if (this.previewItems.length > 0 && (mode === 'import_all' || mode === 'import_missing_only' || mode === 'import_selected' || mode === 'import_by_country')) {
+                    const importedSet = new Set(mode === 'import_selected' ? this.selectedKeys : []);
+                    this.previewItems = this.previewItems.map(it => {
+                        if (mode === 'import_all' || mode === 'import_missing_only') {
+                            return { ...it, exists_locally: true };
+                        }
+                        if (mode === 'import_selected' && importedSet.has(it.key)) {
+                            return { ...it, exists_locally: true };
+                        }
+                        if (mode === 'import_by_country' && String(it.country_code) === String(countryForImport)) {
+                            return { ...it, exists_locally: true };
+                        }
+                        return it;
+                    });
+                    if (this.previewMeta) {
+                        const existingCnt = this.previewItems.filter(i => i.exists_locally).length;
+                        this.previewMeta = {
+                            ...this.previewMeta,
+                            existing_count: existingCnt,
+                            new_count: Math.max(0, this.previewItems.length - existingCnt),
+                        };
+                    }
+                    this.selectedKeys = this.previewItems.filter(i => !i.exists_locally).map(i => i.key);
                 }
             } catch (e) {
                 this.showNotice('error', 'Import request failed due to a network error.');
