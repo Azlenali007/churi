@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/bootstrap.php';
 $user = Auth::requireUser();
+StoreManager::requireSmmEnabled();
 
 $massResults = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

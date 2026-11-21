@@ -9,6 +9,9 @@ $currentUser = Auth::user();
 $currentUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $baseCurr = Currency::getBaseCurrency();
 Currency::setActiveDisplayOverride($baseCurr['code']);
+$smmStoreOn = StoreManager::isSmmEnabled();
+$otpStoreOn = StoreManager::isOtpEnabled();
+$userDashHref = $smmStoreOn ? '/user/dashboard.php' : ($otpStoreOn ? '/otp/dashboard.php' : '/user/profile.php');
 ?>
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
@@ -47,18 +50,23 @@ Currency::setActiveDisplayOverride($baseCurr['code']);
             </div>
         </a>
 
-        <nav class="hidden md:flex items-center gap-7 text-sm font-semibold text-slate-600">
-            <a href="/" class="<?= $currentUri === '/' || $currentUri === '/index.php' ? 'text-purple-700' : 'hover:text-purple-700' ?> transition">Home</a>
-            <a href="/services.php" class="<?= $currentUri === '/services.php' ? 'text-purple-700' : 'hover:text-purple-700' ?> transition">Services &amp; Pricing</a>
-            <a href="/#how-it-works" class="hover:text-purple-700 transition">How It Works</a>
+        <nav class="hidden md:flex items-center gap-6 text-sm font-semibold text-slate-600">
+            <?php if ($smmStoreOn): ?>
+                <a href="/" class="<?= $currentUri === '/' || $currentUri === '/index.php' ? 'text-purple-700' : 'hover:text-purple-700' ?> transition">Home</a>
+                <a href="/services.php" class="<?= $currentUri === '/services.php' ? 'text-purple-700' : 'hover:text-purple-700' ?> transition">Services &amp; Pricing</a>
+                <a href="/#how-it-works" class="hover:text-purple-700 transition">How It Works</a>
+            <?php endif; ?>
             <a href="/faq.php" class="<?= $currentUri === '/faq.php' ? 'text-purple-700' : 'hover:text-purple-700' ?> transition">FAQ</a>
             <a href="/contact.php" class="<?= $currentUri === '/contact.php' ? 'text-purple-700' : 'hover:text-purple-700' ?> transition">Contact</a>
         </nav>
 
         <div class="flex items-center gap-2 sm:gap-3">
+            <?php if ($otpStoreOn): ?>
+                <div class="hidden lg:block"><?= StoreManager::renderPublicOtpPill('!py-2 !px-4 !text-xs') ?></div>
+            <?php endif; ?>
             <div class="hidden md:flex items-center gap-2.5">
                 <?php if ($currentUser): ?>
-                    <a href="/user/dashboard.php" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white text-sm font-bold shadow-md shadow-purple-500/25 transition tabular-nums">
+                    <a href="<?= Validator::e($userDashHref) ?>" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white text-sm font-bold shadow-md shadow-purple-500/25 transition tabular-nums">
                         Dashboard (<?= Currency::formatBase((string)$currentUser['wallet_balance'], 2, true) ?>)
                     </a>
                 <?php else: ?>
@@ -74,13 +82,18 @@ Currency::setActiveDisplayOverride($baseCurr['code']);
     </div>
 
     <div x-show="mobileMenu" x-cloak class="md:hidden bg-white border-t border-purple-100 px-4 py-4 space-y-2">
-        <a href="/" class="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-700 hover:bg-purple-50">Home</a>
-        <a href="/services.php" class="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-700 hover:bg-purple-50">Services &amp; Pricing</a>
+        <?php if ($smmStoreOn): ?>
+            <a href="/" class="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-700 hover:bg-purple-50">Home</a>
+            <a href="/services.php" class="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-700 hover:bg-purple-50">Services &amp; Pricing</a>
+        <?php endif; ?>
+        <?php if ($otpStoreOn): ?>
+            <div class="py-1"><?= StoreManager::renderPublicOtpPill('w-full justify-center') ?></div>
+        <?php endif; ?>
         <a href="/faq.php" class="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-700 hover:bg-purple-50">FAQ</a>
         <a href="/contact.php" class="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-700 hover:bg-purple-50">Contact</a>
         <div class="pt-2 flex gap-2">
             <?php if ($currentUser): ?>
-                <a href="/user/dashboard.php" class="flex-1 text-center py-2.5 rounded-xl bg-purple-600 text-white text-sm font-bold">Dashboard</a>
+                <a href="<?= Validator::e($userDashHref) ?>" class="flex-1 text-center py-2.5 rounded-xl bg-purple-600 text-white text-sm font-bold">Dashboard</a>
             <?php else: ?>
                 <a href="/login.php" class="flex-1 text-center py-2.5 rounded-xl bg-purple-50 text-purple-700 text-sm font-bold">Sign In</a>
                 <a href="/register.php" class="flex-1 text-center py-2.5 rounded-xl bg-purple-600 text-white text-sm font-bold">Register</a>

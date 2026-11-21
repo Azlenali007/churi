@@ -34,6 +34,7 @@ Configure these in **cPanel → Cron Jobs** (replace `/path/to/public_html` with
 */2 * * * * /usr/local/bin/php /path/to/public_html/cron/sync_orders.php >/dev/null 2>&1
 0 */6 * * * /usr/local/bin/php /path/to/public_html/cron/sync_providers.php >/dev/null 2>&1
 */5 * * * * /usr/local/bin/php /path/to/public_html/cron/expire_sales.php >/dev/null 2>&1
+* * * * * /usr/local/bin/php /path/to/public_html/cron/sync_otp_activations.php >/dev/null 2>&1
 ```
 
 ## 5. External Credentials Required After Installation
@@ -44,5 +45,16 @@ Configure these in **cPanel → Cron Jobs** (replace `/path/to/public_html` with
    - Bank Account / UPI ID / QR instructions
 3. **Upstream SMM Provider APIs** (`/admin/providers.php`):
    - Provider API URL (v2 compatible) and API Key, plus currency & exchange rate
-4. **SMTP Email** (`/admin/settings.php`):
+4. **OTP Activation Providers** (`/admin/otp-providers.php`):
+   - **5SIM Official**: Select `5SIM Official API`, set Base URL `https://5sim.net`, enter your 5SIM API token, and click **Test Connection** & **Check Balance**.
+   - **Custom JSON Provider**: Select `Custom JSON Provider API`, enter your Base URL, API Key, Auth Type (`bearer` / `header` / `query` / `post_body`), Endpoints JSON, Response JSON Mapping, and Status Mapping.
+   - **Optional Webhooks**: Set a Webhook Secret on any provider and point the provider webhook to `https://yourdomain.com/api/otp-webhook.php?provider_id=<ID>`.
+5. **SMTP Email** (`/admin/settings.php`):
    - SMTP Host, Port, Username, Password, Encryption, From Email (for password resets, email verification, and notifications)
+
+## 6. Upgrading an Existing SMM Database to Dual Store (SMM + OTP)
+1. Upload the updated PHP files over your existing installation (preserving your existing `/config/config.php` and `/storage/`).
+2. Import `/database/migrations/2026_11_dual_store_otp.sql` in **cPanel → phpMyAdmin** (repeat-safe; `StoreManager::ensureSchema()` also automatically creates missing OTP tables on first load).
+3. Add the 1-minute OTP sync cron job above so active OTP activations automatically finalize and refund on expiry.
+4. Configure independent store availability in **Admin → Store Management** (`/admin/store-management.php`), then add your OTP provider, countries, and services under the **OTP Store** admin section.
+

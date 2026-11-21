@@ -174,6 +174,18 @@ class Helpers
                 return '<span class="inline-flex items-center justify-center rounded-lg bg-indigo-600 text-white p-1 shrink-0 ' . $sizeClass . '"><svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg></span>';
             case 'twitch':
                 return '<span class="inline-flex items-center justify-center rounded-lg bg-purple-600 text-white p-1 shrink-0 ' . $sizeClass . '"><svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg></span>';
+            case 'whatsapp':
+                return '<span class="inline-flex items-center justify-center rounded-lg bg-emerald-500 text-white p-1 shrink-0 ' . $sizeClass . '"><svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full"><path d="M12.04 2a9.9 9.9 0 0 0-8.52 14.95L2 22l5.2-1.45A9.92 9.92 0 1 0 12.04 2zm5.79 14.08c-.24.68-1.41 1.3-1.95 1.38-.51.08-1.14.11-1.84-.11-.43-.14-.98-.32-1.69-.63-2.97-1.28-4.91-4.3-5.06-4.5-.15-.2-1.21-1.61-1.21-3.07 0-1.46.76-2.18 1.03-2.48.27-.3.59-.37.79-.37h.57c.18 0 .43-.07.67.51.24.59.84 2.04.91 2.19.07.15.12.32.02.52-.1.2-.15.32-.3.49-.15.17-.31.38-.44.51-.15.15-.3.31-.13.61.17.3.76 1.25 1.63 2.02 1.12 1 2.07 1.31 2.36 1.46.3.15.47.12.64-.07.17-.2.74-.86.94-1.16.2-.3.39-.25.66-.15.27.1 1.72.81 2.02.96.3.15.49.22.56.34.08.13.08.74-.16 1.42z"/></svg></span>';
+            case 'google':
+                return '<span class="inline-flex items-center justify-center rounded-lg bg-blue-500 text-white p-1 shrink-0 ' . $sizeClass . '"><svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full"><path d="M21.35 11.1h-9.18v2.92h5.27c-.23 1.24-.94 2.29-2 2.99v2.48h3.23c1.89-1.74 2.98-4.31 2.98-7.35 0-.69-.06-1.35-.18-1.99l-.12-.05z"/><path d="M12.17 22c2.7 0 4.96-.89 6.62-2.41l-3.23-2.48c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.23v2.56A10 10 0 0 0 12.17 22z" opacity=".88"/><path d="M6.56 13.94a6 6 0 0 1 0-3.88V7.5H3.23a10 10 0 0 0 0 9l3.33-2.56z" opacity=".75"/><path d="M12.17 5.93c1.47 0 2.79.51 3.83 1.5l2.87-2.87C17.13 2.94 14.87 2 12.17 2A10 10 0 0 0 3.23 7.5l3.33 2.56c.79-2.37 3-4.13 5.61-4.13z" opacity=".92"/></svg></span>';
+            case 'amazon':
+                return '<span class="inline-flex items-center justify-center rounded-lg bg-amber-500 text-white p-1 shrink-0 ' . $sizeClass . '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-full h-full"><path d="M6 16c3.5 2.5 8.5 2.5 12 0"/><path d="M16 14l2.5 2-2 2"/><path d="M9 12V8a3 3 0 0 1 6 0v4"/><path d="M9 10h6"/></svg></span>';
+            case 'apple':
+                return '<span class="inline-flex items-center justify-center rounded-lg bg-slate-800 text-white p-1 shrink-0 ' . $sizeClass . '"><svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full"><path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.744.9-1.99 1.57-2.987 1.57-.12 0-.23-.02-.3-.03-.01-.06-.04-.22-.04-.39 0-1.15.572-2.27 1.206-2.98.804-.94 2.142-1.64 3.248-1.68.03.13.05.28.05.43zm4.565 15.71c-.03.07-.463 1.58-1.518 3.12-.945 1.34-1.94 2.71-3.43 2.71-1.517 0-1.9-.88-3.63-.88-1.698 0-2.302.91-3.67.91-1.377 0-2.332-1.26-3.428-2.8-1.287-1.82-2.323-4.63-2.323-7.28 0-4.28 2.797-6.55 5.552-6.55 1.448 0 2.675.95 3.6.95.865 0 2.222-1.01 3.902-1.01.613 0 2.886.06 4.374 2.19-.13.09-2.383 1.37-2.383 4.19 0 3.26 2.854 4.42 2.955 4.45z"/></svg></span>';
+            case 'microsoft':
+                return '<span class="inline-flex items-center justify-center rounded-lg bg-sky-600 text-white p-1 shrink-0 ' . $sizeClass . '"><svg viewBox="0 0 24 24" fill="currentColor" class="w-full h-full"><rect x="3" y="3" width="8.5" height="8.5"/><rect x="12.5" y="3" width="8.5" height="8.5"/><rect x="3" y="12.5" width="8.5" height="8.5"/><rect x="12.5" y="12.5" width="8.5" height="8.5"/></svg></span>';
+            case 'uber':
+                return '<span class="inline-flex items-center justify-center rounded-lg bg-slate-900 text-white p-1 shrink-0 ' . $sizeClass . '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-full h-full"><rect x="3" y="3" width="18" height="18" rx="4"/><rect x="9" y="9" width="6" height="6" fill="currentColor"/></svg></span>';
             case 'threads':
                 return '<span class="inline-flex items-center justify-center rounded-lg bg-neutral-900 text-white p-1 shrink-0 ' . $sizeClass . '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-full h-full"><circle cx="12" cy="12" r="9"/><path d="M15.5 11.5c0-2-1.5-3.5-3.5-3.5s-3.5 1.5-3.5 3.5 1.5 3.5 3.5 3.5c1.5 0 2.5-.8 3-2"/></svg></span>';
             default:
@@ -184,25 +196,38 @@ class Helpers
     public static function statusBadge(string $status): string
     {
         $map = [
-            'completed'   => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            'active'      => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            'answered'    => 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            'in_progress' => 'bg-sky-50 text-sky-700 border-sky-200',
-            'processing'  => 'bg-indigo-50 text-indigo-700 border-indigo-200',
-            'pending'     => 'bg-amber-50 text-amber-700 border-amber-200',
-            'open'        => 'bg-purple-50 text-purple-700 border-purple-200',
-            'partial'     => 'bg-orange-50 text-orange-700 border-orange-200',
-            'canceled'    => 'bg-rose-50 text-rose-700 border-rose-200',
-            'rejected'    => 'bg-rose-50 text-rose-700 border-rose-200',
-            'failed'      => 'bg-red-50 text-red-700 border-red-200',
-            'suspended'   => 'bg-red-50 text-red-700 border-red-200',
-            'inactive'    => 'bg-slate-100 text-slate-600 border-slate-200',
-            'closed'      => 'bg-slate-100 text-slate-600 border-slate-200',
-            'expired'     => 'bg-slate-100 text-slate-600 border-slate-200',
-            'stopped'     => 'bg-rose-50 text-rose-700 border-rose-200',
+            'completed'    => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            'active'       => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            'answered'     => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            'resolved'     => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            'approved'     => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            'otp_received' => 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            'in_progress'  => 'bg-sky-50 text-sky-700 border-sky-200',
+            'waiting_otp'  => 'bg-violet-50 text-violet-700 border-violet-200',
+            'waiting_user' => 'bg-amber-50 text-amber-700 border-amber-200',
+            'processing'   => 'bg-indigo-50 text-indigo-700 border-indigo-200',
+            'pending'      => 'bg-amber-50 text-amber-700 border-amber-200',
+            'open'         => 'bg-purple-50 text-purple-700 border-purple-200',
+            'partial'      => 'bg-orange-50 text-orange-700 border-orange-200',
+            'refunded'     => 'bg-cyan-50 text-cyan-700 border-cyan-200',
+            'canceled'     => 'bg-rose-50 text-rose-700 border-rose-200',
+            'rejected'     => 'bg-rose-50 text-rose-700 border-rose-200',
+            'failed'       => 'bg-red-50 text-red-700 border-red-200',
+            'suspended'    => 'bg-red-50 text-red-700 border-red-200',
+            'inactive'     => 'bg-slate-100 text-slate-600 border-slate-200',
+            'closed'       => 'bg-slate-100 text-slate-600 border-slate-200',
+            'expired'      => 'bg-slate-100 text-slate-600 border-slate-200',
+            'stopped'      => 'bg-rose-50 text-rose-700 border-rose-200',
+        ];
+        $labelMap = [
+            'waiting_otp'  => 'Waiting OTP',
+            'otp_received' => 'OTP Received',
+            'waiting_user' => 'Waiting for User',
+            'answered'     => 'Admin Replied',
+            'canceled'     => 'Cancelled',
         ];
         $cls = $map[$status] ?? 'bg-slate-100 text-slate-700 border-slate-200';
-        $label = ucwords(str_replace('_', ' ', $status));
+        $label = $labelMap[$status] ?? ucwords(str_replace('_', ' ', $status));
         return '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ' . $cls . '">' . Validator::e($label) . '</span>';
     }
 

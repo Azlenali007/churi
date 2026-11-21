@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/includes/bootstrap.php';
+StoreManager::requireSmmEnabled();
 
 $pageTitle = 'Services & Pricing — ' . Helpers::setting('site_name', 'SMM PRO');
 $search = Validator::str($_GET['search'] ?? '', 120);

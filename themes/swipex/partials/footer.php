@@ -2,9 +2,10 @@
 </div><!-- end swipex-main-wrap -->
 </div><!-- end swipex-shell -->
 
-<?php $bottomScript = basename($_SERVER['SCRIPT_NAME'] ?? 'dashboard.php'); ?>
-<!-- SwipeX Sticky Bottom Navigation Dock (Matches Reference Screenshot) -->
+<?php $bottomScript = basename($_SERVER['SCRIPT_NAME'] ?? 'dashboard.php'); $smmDockOn = StoreManager::isSmmEnabled(); $otpDockOn = StoreManager::isOtpEnabled(); ?>
+<!-- SwipeX Sticky Bottom Navigation Dock -->
 <nav aria-label="SwipeX Bottom Navigation" class="swipex-bottom-nav px-3 pt-2 pb-2.5">
+    <?php if ($smmDockOn): ?>
     <a href="/user/dashboard.php" class="flex flex-col items-center gap-0.5 min-w-[54px] text-[11px] font-bold <?= $bottomScript === 'dashboard.php' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600' ?>">
         <span class="w-11 h-8 rounded-xl flex items-center justify-center transition <?= $bottomScript === 'dashboard.php' ? 'bg-blue-50 text-blue-600' : '' ?>">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -23,6 +24,14 @@
         </span>
         <span class="text-[11px] font-extrabold mt-1 text-blue-600">Order</span>
     </a>
+    <?php elseif ($otpDockOn): ?>
+    <a href="/otp/dashboard.php" class="flex flex-col items-center gap-0.5 min-w-[54px] text-[11px] font-bold text-purple-600">
+        <span class="w-11 h-8 rounded-xl flex items-center justify-center bg-purple-50 text-purple-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M9 10h6M9 14h4"/></svg>
+        </span>
+        <span>OTP</span>
+    </a>
+    <?php endif; ?>
     <a href="/user/orders.php" class="flex flex-col items-center gap-0.5 min-w-[54px] text-[11px] font-bold <?= $bottomScript === 'orders.php' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600' ?>">
         <span class="w-11 h-8 rounded-xl flex items-center justify-center transition <?= $bottomScript === 'orders.php' ? 'bg-blue-50 text-blue-600' : '' ?>">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>

@@ -1,0 +1,1153 @@
+COMPLETE DEVELOPMENT PROMPT – ADD A PREMIUM DUAL STORE OTP ACTIVATION SYSTEM TO THE EXISTING SMM PANEL
+
+Act as a senior PHP developer, MySQL database architect, UI/UX designer, and security engineer.
+
+Your task is to upgrade my EXISTING SMM Panel website by adding a complete, fully functional OTP Activation Store alongside the existing SMM Store.
+
+This is an extension of an existing production project, NOT a new website.
+
+Read and understand the entire existing codebase before making changes. Understand its architecture, database, authentication, wallet, admin panel, user panel, payment system, navigation, permissions, and existing design system.
+
+Do not unnecessarily rewrite, replace, or damage existing modules.
+
+The final result must be a professional, production-ready Dual Store platform with two independently manageable stores sharing one common account system.
+
+⸻
+
+1. STRICT TECHNOLOGY REQUIREMENTS
+
+Use exactly the existing project’s technology stack:
+
+* Pure PHP 8.1+
+* MySQL / MariaDB
+* Tailwind CSS
+* Alpine.js
+* Vanilla JavaScript
+* AJAX / Fetch API
+* HTML5
+* CSS3
+* Premium SVG icons
+
+Strict restrictions:
+
+* Absolutely NO TypeScript.
+* Absolutely NO TSX.
+* NO React.
+* NO Vue.
+* NO Next.js.
+* NO Laravel.
+* NO Symfony.
+* NO Node.js runtime requirement.
+* NO npm/Vite build requirement.
+* NO SQLite.
+* NO unnecessary Composer dependencies.
+* No framework migration.
+
+The website must run directly on normal cPanel/shared hosting with PHP and MySQL.
+
+Continue using the existing project’s folder structure, database connection, authentication classes, helpers, and coding conventions wherever possible.
+
+Do not create a second independent application.
+
+⸻
+
+2. MAIN CONCEPT – DUAL STORE SYSTEM
+
+The website will have two stores:
+
+1. SMM Store – Existing SMM Panel.
+2. OTP Store – New OTP Activation Store.
+
+Both stores must operate inside the same website and the same application.
+
+They must share:
+
+* One registration system.
+* One login system.
+* One user account.
+* One PHP session.
+* One wallet balance.
+* One payment/deposit system.
+* One transaction ledger.
+* One profile.
+* One notification system.
+* One support ticket system.
+* One admin panel.
+
+SMM and OTP orders must remain separately identifiable and have separate order history sections.
+
+The OTP Store must not have a separate registration or login system.
+
+The user must be able to switch between SMM Store and OTP Store without logging in again.
+
+⸻
+
+3. STORE SWITCHING SYSTEM
+
+Create a premium store-switching experience.
+
+On the existing public SMM landing page, add a prominent rounded pill/bubble-style button.
+
+Suggested text:
+
+“Need OTP? Tap Here!”
+
+Design requirements:
+
+* Premium purple gradient.
+* White text.
+* Premium message/mobile icon.
+* Rounded bubble shape.
+* Subtle animation.
+* Smooth hover and tap effects.
+* Mobile-friendly floating placement.
+* Desktop navbar or hero placement.
+* Professional spacing and typography.
+
+When the user clicks this button, open the OTP Store.
+
+The OTP Store must have its own professionally designed navigation and dashboard.
+
+Provide a “Back to SMM Store” option inside the OTP Store.
+
+Store switching must preserve the user’s existing login session.
+
+IMPORTANT: Do not simply copy the existing SMM landing page and rename it OTP Store.
+
+Design and develop the OTP Store as a completely different, purpose-built product interface.
+
+⸻
+
+4. ADMIN STORE MANAGEMENT – INDEPENDENT ON/OFF CONTROLS
+
+Create a new Admin Panel section:
+
+Store Management
+
+Admin must have two independent controls:
+
+* SMM Store: ON / OFF
+* OTP Store: ON / OFF
+
+Possible configurations:
+
+* Both stores ON.
+* Only SMM Store ON.
+* Only OTP Store ON.
+* Both stores OFF.
+
+Store visibility and access rules:
+
+A. When SMM Store is ON:
+
+* Show SMM Store navigation/button.
+* Allow access to SMM Store.
+* Allow new SMM orders.
+
+B. When SMM Store is OFF:
+
+* Completely hide the SMM Store navigation/button throughout the website.
+* Block direct access to SMM purchasing pages and new order submission.
+* Do not display a maintenance page.
+* Do not display a maintenance message.
+* Do not redirect users to a maintenance page.
+* OTP Store must continue working normally if enabled.
+
+C. When OTP Store is ON:
+
+* Show the OTP Store button.
+* Allow access to OTP Store.
+* Allow new OTP activations.
+
+D. When OTP Store is OFF:
+
+* Completely hide the OTP Store navigation/button throughout the website.
+* Block direct access to OTP purchasing pages and new activation requests.
+* Do not display a maintenance page.
+* Do not display a maintenance message.
+* SMM Store must continue working normally if enabled.
+
+IMPORTANT:
+Hiding a button alone is not sufficient. Every relevant backend route and purchase endpoint must enforce the store’s enabled/disabled status.
+
+When a store is disabled, its existing orders, order history, transactions, and user data must remain preserved.
+
+Existing active OTP activations must continue being tracked and processed even when the OTP Store is OFF.
+
+Store ON/OFF settings must be saved in the database and applied consistently across desktop, mobile, public pages, dashboards, and direct URLs.
+
+⸻
+
+5. OTP STORE – COMPLETELY CUSTOM UI/UX
+
+Create a premium OTP Store interface from scratch.
+
+Do not reuse the SMM dashboard layout as a direct copy.
+
+The OTP Store should feel like a modern mobile-first OTP activation platform.
+
+Design direction:
+
+* Premium white and purple theme.
+* Clean SaaS-style interface.
+* Beautiful cards.
+* Modern typography.
+* Smooth animations.
+* Premium SVG icons.
+* Professional country flags.
+* Responsive layouts.
+* Excellent mobile experience.
+* Desktop-friendly dashboard.
+* Proper loading states.
+* Empty states.
+* Error states.
+* Success notifications.
+* Confirmation dialogs.
+
+Avoid excessive gradients, clutter, and unnecessary animations.
+
+Do not use placeholder content or fake statistics.
+
+Every displayed value must come from real database records or actual provider responses.
+
+⸻
+
+6. OTP USER DASHBOARD
+
+Create a dedicated OTP Dashboard.
+
+Display:
+
+* Wallet Balance.
+* Active Activations.
+* Waiting for OTP.
+* OTP Received.
+* Completed Activations.
+* Recent OTP Activity.
+* Quick Buy OTP button.
+* Popular Services.
+* Recently Used Services.
+* Notifications.
+
+The wallet balance must come from the existing shared wallet system.
+
+⸻
+
+7. BUY OTP – MAIN PURCHASE SYSTEM
+
+Create a fully functional Buy OTP page.
+
+User purchase flow:
+
+STEP 1:
+User opens Buy OTP.
+
+STEP 2:
+User searches or selects a service.
+
+Examples:
+
+* Instagram
+* Facebook
+* Telegram
+* WhatsApp
+* Google
+* Other services supported by configured providers.
+
+Only show services that are enabled by admin and actually available through their assigned provider.
+
+STEP 3:
+User selects a country.
+
+Display:
+
+* Country name.
+* Flag.
+* Service availability.
+* Price.
+* Provider availability.
+
+STEP 4:
+Display the current price and a clear Buy Activation button.
+
+STEP 5:
+When the user clicks Buy Activation:
+
+* Validate the user session.
+* Verify OTP Store is enabled.
+* Verify service and country are enabled.
+* Verify provider availability.
+* Verify current provider price.
+* Verify wallet balance.
+* Prevent duplicate submissions.
+* Deduct wallet balance safely.
+* Request a number from the assigned provider.
+* Save the activation and provider reference ID.
+* Display the assigned phone number only after successful provider assignment.
+
+IMPORTANT BUSINESS MODEL:
+
+This is a DIRECT ONE-TIME OTP ACTIVATION PURCHASE SYSTEM.
+
+It is NOT a rental-number system.
+
+It is NOT a number marketplace.
+
+The user must NOT browse and manually select a phone number before purchase.
+
+The provider automatically assigns a virtual number after the user purchases an activation.
+
+The assigned number becomes visible after successful purchase.
+
+After assignment, the user waits for the OTP.
+
+Display the received OTP inside the website when the provider returns it.
+
+Do not create fake numbers, fake OTPs, or simulated provider responses.
+
+If provider purchase fails, handle the wallet deduction safely and issue a refund according to the transaction outcome.
+
+⸻
+
+8. PROVIDER INTEGRATION SYSTEM
+
+Implement a real provider management system.
+
+Support:
+
+A. Built-in 5SIM integration.
+
+B. Custom OTP provider integration.
+
+5SIM Integration
+
+Implement a dedicated 5SIM API adapter.
+
+Support the actual API operations required for:
+
+* Provider authentication.
+* Service availability.
+* Country availability.
+* Service pricing.
+* Number purchase / activation.
+* Activation status.
+* SMS/OTP retrieval.
+* Activation cancellation where permitted.
+* Activation completion where supported.
+* Provider balance checking.
+* Provider error handling.
+
+Use the official 5SIM API documentation to verify endpoint URLs, request methods, authentication headers, parameters, response formats, and status values before implementation.
+
+Do not invent API endpoints or response structures.
+
+Keep API credentials on the server only.
+
+Never expose provider API keys in HTML, JavaScript, browser responses, or public APIs.
+
+Custom Provider System
+
+Allow admin to add and configure custom OTP providers.
+
+Admin settings:
+
+* Provider Name.
+* Provider Base URL.
+* API Token / API Key.
+* Authentication Type.
+* API Request Method.
+* Purchase Endpoint.
+* Status Endpoint.
+* SMS/OTP Endpoint.
+* Cancel Endpoint.
+* Complete Endpoint.
+* Pricing Endpoint.
+* Country/Service Endpoint.
+* Request Parameters.
+* Response JSON Mapping.
+* Provider Status Mapping.
+* Timeout Settings.
+* Polling Interval.
+* Webhook URL / Secret where supported.
+* Active / Inactive Status.
+
+IMPORTANT:
+
+Different providers use different APIs.
+
+Do not pretend that adding only a base URL and API key makes every provider compatible.
+
+Build a configurable adapter system and allow custom provider-specific adapters when their API format requires custom PHP logic.
+
+Admin must be able to assign a provider to individual OTP services.
+
+Example:
+
+* Instagram → 5SIM.
+* Telegram → Custom Provider.
+* Facebook → 5SIM.
+
+Support multiple providers.
+
+Never expose API credentials to users.
+
+⸻
+
+9. LIVE ACTIVATION TRACKING
+
+Create a live activation tracking system.
+
+Each activation must display:
+
+* Service Name.
+* Country.
+* Country Flag.
+* Assigned Phone Number.
+* Activation ID.
+* Provider Reference ID.
+* Purchase Price.
+* Current Status.
+* Time Remaining.
+* OTP Message.
+* OTP Received Time.
+* Purchase Time.
+
+Activation statuses should include:
+
+* Processing.
+* Active.
+* Waiting OTP.
+* OTP Received.
+* Completed.
+* Expired.
+* Cancelled.
+* Refunded.
+* Failed.
+
+Implement real backend polling through AJAX/Fetch API.
+
+The browser should update the activation status without requiring a full page refresh.
+
+Use server-side polling or scheduled cron jobs to synchronize provider statuses reliably.
+
+Use webhooks when supported by the provider.
+
+Do not rely only on browser polling for critical financial or provider status updates.
+
+The expiry countdown must use the actual provider expiry information or verified provider rules.
+
+Do not assume every provider has the same activation time.
+
+Show the OTP only when it is actually returned by the provider.
+
+⸻
+
+10. ACTIVE ACTIVATIONS PAGE
+
+Create a dedicated Active Activations page.
+
+Display:
+
+* Active activation cards.
+* Service icon.
+* Country flag.
+* Assigned number.
+* OTP status.
+* Countdown.
+* Activation ID.
+* Check SMS action where supported.
+* Cancel activation action where supported.
+* Copy number.
+* Copy OTP.
+* Activation details.
+
+Automatically refresh activation status.
+
+Show proper empty states when there are no active activations.
+
+Only allow users to access their own activation records.
+
+⸻
+
+11. OTP HISTORY
+
+Create a separate OTP History page.
+
+Include:
+
+* All Activations.
+* Completed Activations.
+* Expired Activations.
+* Cancelled Activations.
+* Failed Activations.
+* Refunded Activations.
+
+Filters:
+
+* Date.
+* Service.
+* Country.
+* Status.
+
+Display:
+
+* Activation ID.
+* Service.
+* Country.
+* Purchase Price.
+* Provider.
+* Assigned Number.
+* Purchase Date.
+* Final Status.
+* Refund Information.
+
+Users must only see their own history.
+
+⸻
+
+12. SHARED WALLET SYSTEM – EXTREMELY IMPORTANT
+
+Do NOT create a second OTP wallet.
+
+Use the existing SMM wallet.
+
+Both stores must use the exact same wallet balance and existing wallet transaction infrastructure.
+
+Example:
+
+Initial balance: ₹500
+
+SMM order: ₹100
+
+Remaining balance: ₹400
+
+OTP activation: ₹30
+
+Remaining balance: ₹370
+
+Both stores must display ₹370.
+
+Requirements:
+
+* Shared wallet balance.
+* Shared add-funds system.
+* Shared payment system.
+* Shared transaction ledger.
+* OTP purchase deductions.
+* OTP refunds.
+* SMM purchase deductions.
+* Deposit history.
+* Transaction history.
+
+Use safe database transactions.
+
+Prevent:
+
+* Double wallet deductions.
+* Duplicate activation purchases.
+* Race conditions.
+* Negative wallet balances.
+* Duplicate refunds.
+* Duplicate provider purchase requests.
+* Inconsistent wallet records.
+
+Use atomic wallet operations and proper database locking where required.
+
+Every wallet deduction and refund must have an identifiable transaction record.
+
+Store the actual purchase price in each activation record so that future price changes do not modify historical purchases.
+
+If provider assignment fails after wallet deduction, refund the user safely.
+
+If the provider returns an uncertain or pending response, reconcile the provider request before attempting another purchase or refund.
+
+Never blindly refund an activation that the provider has actually created.
+
+⸻
+
+13. SINGLE SUPPORT SYSTEM FOR BOTH STORES
+
+IMPORTANT:
+
+Do NOT create two separate admin support systems.
+
+The existing support ticket system must be extended to support both SMM and OTP tickets.
+
+Admin must have only ONE Support Management section.
+
+Support ticket types:
+
+* SMM Support.
+* OTP Support.
+
+User-side support categories:
+
+OTP:
+
+* OTP Not Received.
+* Number Not Working.
+* Activation Failed.
+* Wrong OTP Received.
+* Activation Expired.
+* Cancel / Refund Request.
+* Wallet Deduction Issue.
+* Payment Issue.
+* Other Issues.
+
+SMM:
+Preserve the existing SMM support categories.
+
+User Support Features
+
+* Create Ticket.
+* Select Category.
+* Attach Related OTP Order ID automatically where applicable.
+* Enter Problem Description.
+* Upload Screenshot.
+* View My Tickets.
+* View Ticket Conversation.
+* Reply to Admin.
+* Close Ticket.
+* Reopen Ticket where permitted.
+
+Ticket statuses:
+
+* Open.
+* Admin Replied.
+* Waiting for User.
+* Resolved.
+* Closed.
+
+Admin Support Management
+
+One common admin interface with:
+
+* All Tickets.
+* SMM Filter.
+* OTP Filter.
+* Open Tickets.
+* Pending Tickets.
+* Resolved Tickets.
+* Search by Ticket ID.
+* Search by Username.
+* Filter by Date.
+* Filter by Status.
+* Filter by Category.
+
+When an OTP ticket is opened, show related OTP activation details automatically.
+
+When an SMM ticket is opened, show related SMM order details automatically.
+
+Admin must be able to:
+
+* Reply to tickets.
+* Send attachments.
+* Add internal notes.
+* Change status.
+* Close / Reopen tickets.
+* Approve or reject eligible refunds.
+
+Refund approval must use the same shared wallet and transaction ledger.
+
+Never create a second support dashboard.
+
+⸻
+
+14. OTP USER NAVIGATION
+
+Create the following OTP Store navigation:
+
+1. OTP Dashboard.
+2. Buy OTP.
+3. Active Activations.
+4. OTP History.
+5. Wallet.
+6. Transactions.
+7. Notifications.
+8. Support Tickets.
+9. Profile & Settings.
+10. Back to SMM Store.
+11. Logout.
+
+The wallet, profile, notifications, support, and logout must use the existing shared systems.
+
+Only OTP-specific pages and order history should be separate.
+
+⸻
+
+15. ADMIN PANEL – OTP MANAGEMENT
+
+Extend the existing admin panel.
+
+Do not create another admin login.
+
+Add the following OTP sections:
+
+A. OTP Dashboard
+
+Display actual database/provider statistics:
+
+* Total Activations.
+* Today’s Activations.
+* Active Activations.
+* Waiting for OTP.
+* OTP Received.
+* Completed.
+* Failed.
+* Cancelled.
+* Refunded.
+* OTP Revenue.
+* Provider Status.
+
+B. OTP Orders
+
+Admin can:
+
+* View All OTP Activations.
+* Search by Activation ID.
+* Search by Username.
+* Search by Phone Number.
+* Search by Provider Reference.
+* Filter by Service.
+* Filter by Country.
+* Filter by Provider.
+* Filter by Status.
+* View Activation Details.
+* View Provider Response Logs.
+* View Wallet Transactions.
+* View Refund Details.
+
+C. OTP Services Management
+
+Admin can:
+
+* Add Service.
+* Edit Service.
+* Delete Service safely.
+* Enable / Disable Service.
+* Set Service Name.
+* Set Service Icon.
+* Assign Provider.
+* Set Selling Price.
+* Set Profit Margin.
+* Set Minimum / Maximum Price if needed.
+* Configure Service Availability.
+* Map Service IDs to Provider IDs.
+
+D. OTP Countries Management
+
+Admin can:
+
+* Enable / Disable Countries.
+* Set Country Name.
+* Set Country Flag.
+* Map Provider Country IDs.
+* Configure country-specific service availability.
+* Configure country-specific pricing if supported.
+
+E. Provider Management
+
+Admin can:
+
+* Add Provider.
+* Edit Provider.
+* Delete Provider safely.
+* Enable / Disable Provider.
+* Configure API credentials.
+* Test API Connection.
+* Check Provider Balance.
+* View Provider Logs.
+* View API Errors.
+* Assign Provider to Services.
+
+F. OTP Settings
+
+Include:
+
+* Default Provider.
+* Default Polling Interval.
+* Purchase Limits.
+* Minimum Wallet Balance.
+* Activation Timeout Settings.
+* Refund Rules.
+* Provider Error Handling.
+* OTP Display Settings.
+* Notifications.
+* API Request Timeout.
+
+All sensitive settings must be stored securely.
+
+G. Refund Management
+
+Admin can:
+
+* View Refund Requests.
+* Check Provider Status.
+* Approve Eligible Refund.
+* Reject Refund.
+* Add Refund Reason.
+* View Refund History.
+
+Refunds must be processed exactly once.
+
+Do not allow duplicate refund credits.
+
+⸻
+
+16. NOTIFICATION SYSTEM
+
+Use the existing notification infrastructure.
+
+Add OTP-related notifications:
+
+* OTP Purchase Successful.
+* Number Assigned.
+* OTP Received.
+* Activation Expiring Soon.
+* Activation Completed.
+* Activation Expired.
+* Activation Cancelled.
+* Refund Processed.
+* Refund Rejected.
+* Provider Error.
+
+Show notifications inside the OTP Store and existing account notification system.
+
+Do not create a separate notification login or account.
+
+⸻
+
+17. PUBLIC OTP STORE LANDING PAGE
+
+Create a dedicated OTP Store public landing page.
+
+This must be a completely original design.
+
+Do not copy the SMM landing page.
+
+Do not just replace SMM text with OTP text.
+
+Build a proper OTP activation platform landing page with:
+
+* Premium hero section.
+* Strong headline.
+* Short explanation of one-time OTP activation.
+* Search services section.
+* Popular service cards.
+* Country selection preview.
+* How It Works section.
+* Three-step purchase explanation.
+* Provider availability section based on real configured services.
+* FAQ section.
+* Support information.
+* CTA buttons.
+* Responsive footer.
+* Store switching button.
+
+Use actual enabled services and provider availability where appropriate.
+
+Do not show fake availability, fake prices, fake ratings, or fake statistics.
+
+Do not hardcode fake service counts.
+
+The public landing page must look like a professional independent product inside the same website.
+
+⸻
+
+18. DATABASE DESIGN AND SQL MIGRATION
+
+Inspect the existing database before adding new tables.
+
+Reuse existing tables wherever appropriate.
+
+Do not duplicate:
+
+* Users.
+* Wallets.
+* Transactions.
+* Payments.
+* Admins.
+* Sessions.
+* Support Tickets.
+* Notifications.
+
+Create new OTP-specific tables only where necessary.
+
+Possible tables:
+
+* otp_providers
+* otp_services
+* otp_countries
+* otp_service_provider_mappings
+* otp_activations
+* otp_provider_logs
+* otp_refunds
+* otp_settings
+
+Adapt these names and structures to the existing database architecture.
+
+Add appropriate:
+
+* Primary keys.
+* Foreign keys where compatible.
+* Indexes.
+* Unique constraints.
+* Timestamps.
+* User ownership references.
+* Provider references.
+* Activation status fields.
+* Wallet transaction references.
+
+Add the two store ON/OFF settings to the existing settings infrastructure if available.
+
+Create a complete updated SQL migration file.
+
+Requirements:
+
+* Must be compatible with the existing database.
+* Must not drop or overwrite existing production data.
+* Must not recreate existing tables unnecessarily.
+* Must be safe to execute on the existing database.
+* Include necessary indexes and constraints.
+* Make migrations repeat-safe where possible.
+* Clearly document execution instructions.
+
+Do not leave the database schema incomplete.
+
+⸻
+
+19. SECURITY REQUIREMENTS
+
+Implement proper security throughout the project.
+
+* Use prepared SQL statements.
+* Validate all inputs server-side.
+* Escape output to prevent XSS.
+* Add CSRF protection to forms and state-changing requests.
+* Enforce user authentication.
+* Enforce admin permissions.
+* Verify ownership of every activation and ticket.
+* Rate-limit sensitive endpoints.
+* Prevent duplicate requests.
+* Secure provider API credentials.
+* Prevent unauthorized wallet changes.
+* Validate provider responses.
+* Log important financial and provider actions.
+* Never expose internal API keys.
+* Prevent users from changing another user’s activation status or OTP.
+* Protect all admin routes using existing permission rules.
+
+Use the existing authentication and role/permission system.
+
+⸻
+
+20. WHITE PAGE PREVENTION – CRITICAL REQUIREMENT
+
+The existing project has previously experienced white-page issues.
+
+You MUST treat this as a critical development requirement.
+
+Do not deliver code that produces blank pages after login or when opening a new module.
+
+Before implementation:
+
+1. Inspect the existing bootstrap/init files.
+2. Inspect the database connection.
+3. Inspect authentication middleware.
+4. Inspect existing routing.
+5. Inspect the existing admin layout.
+6. Inspect the existing user layout.
+7. Inspect existing error handling.
+8. Inspect existing database table structures.
+9. Inspect the existing wallet implementation.
+
+During implementation:
+
+* Use correct include paths.
+* Avoid duplicate function/class declarations.
+* Avoid undefined constants.
+* Avoid missing files.
+* Avoid undefined variables.
+* Avoid SQL column mismatches.
+* Avoid unsupported PHP syntax.
+* Avoid session conflicts.
+* Avoid incorrect redirects.
+* Avoid fatal errors hidden behind blank pages.
+* Do not suppress all errors without logging them.
+
+Implement proper error logging.
+
+Production pages should show a clean user-friendly error message instead of exposing sensitive PHP errors.
+
+Write detailed technical errors to the server error log.
+
+Ensure all new pages use the existing application bootstrap correctly.
+
+⸻
+
+21. TESTING – DO NOT SKIP
+
+Before declaring the project complete, test the complete workflow.
+
+Authentication
+
+* Existing SMM login works.
+* Existing OTP Store access uses the same login.
+* Switching stores does not log out the user.
+* Logout works everywhere.
+
+Shared Wallet
+
+* SMM purchase deducts from shared wallet.
+* OTP purchase deducts from the same wallet.
+* Both stores show identical wallet balances.
+* OTP refund credits the same wallet.
+* Duplicate refunds are prevented.
+* Insufficient balance blocks purchase.
+
+Store Controls
+
+* SMM ON / OTP ON.
+* SMM OFF / OTP ON.
+* SMM ON / OTP OFF.
+* SMM OFF / OTP OFF.
+* Disabled store buttons disappear everywhere.
+* Direct access to disabled stores is blocked.
+* Existing orders and active activation tracking continue.
+
+OTP Purchase
+
+* Service selection works.
+* Country selection works.
+* Live provider availability works.
+* Purchase request works.
+* Provider assigns a real number.
+* Assigned number appears only after successful assignment.
+* OTP polling works.
+* OTP appears when actually received.
+* Completion works.
+* Expiry works.
+* Cancellation works where supported.
+* Eligible refunds work.
+
+Support
+
+* SMM tickets work.
+* OTP tickets work.
+* Both appear in one admin support dashboard.
+* Replies work.
+* Attachments work.
+* Related orders appear correctly.
+* Refund actions work safely.
+
+Admin
+
+* Store Management works.
+* OTP Services Management works.
+* Provider Management works.
+* API connection test works.
+* OTP Orders work.
+* Refund Management works.
+* Admin permissions work.
+
+UI
+
+* No white pages.
+* No broken navigation.
+* No missing icons.
+* No horizontal overflow on mobile.
+* No broken desktop layouts.
+* No non-functional buttons.
+* No fake data.
+
+Use a test provider or controlled mock adapter only in a non-production testing environment. Never present mock results as real provider availability or real OTPs.
+
+Do not claim live provider functionality has passed unless actual provider credentials and a successful API test are available.
+
+⸻
+
+22. DEVELOPMENT RULES
+
+Follow these rules strictly:
+
+1. Work inside the existing project.
+2. Do not rebuild the existing SMM Panel from scratch.
+3. Do not remove existing working features.
+4. Do not replace the existing wallet.
+5. Do not create a second login system.
+6. Do not create a second admin panel.
+7. Do not create a second support system.
+8. Do not copy-paste the SMM landing page to create the OTP landing page.
+9. Do not use fake API responses in production.
+10. Do not use placeholder buttons or forms.
+11. Do not leave unfinished modules.
+12. Do not change unrelated existing UI unnecessarily.
+13. Maintain existing coding conventions.
+14. Use secure PHP and MySQL practices.
+15. Keep the project cPanel compatible.
+16. All new pages must be responsive.
+17. All features must connect to real database operations.
+18. All provider actions must use actual provider API adapters.
+
+If an existing feature must be modified, preserve backward compatibility.
+
+⸻
+
+23. FINAL DELIVERABLES
+
+When finished, provide:
+
+1. Complete updated project files.
+2. All new PHP files.
+3. Updated existing PHP files.
+4. Updated CSS/JavaScript assets.
+5. Complete updated SQL migration file.
+6. Provider integration code.
+7. Admin OTP management pages.
+8. User OTP Store pages.
+9. New OTP Store landing page.
+10. Shared wallet integration.
+11. Shared support integration.
+12. Store ON/OFF functionality.
+13. Error handling and logs.
+14. Installation/update instructions for cPanel.
+15. A list of all completed features.
+16. A list of any features that still require real provider credentials or external configuration.
+
+Do not provide only code snippets or a visual prototype.
+
+Actually implement the features in the existing project.
+
+If the environment allows direct file editing, edit the actual project files. If it requires delivering a ZIP, provide the complete updated ZIP and SQL migration.
+
+Do not declare completion until the implementation has been checked against the testing requirements.
+
+FINAL EXPECTED RESULT
+
+A professional Dual Store platform:
+
+EXISTING SMM STORE + NEW OTP ACTIVATION STORE
+
+One website.
+One registration.
+One login.
+One session.
+One wallet.
+One payment system.
+One transaction ledger.
+One support system.
+One notification system.
+One admin panel.
+
+Two independent stores.
+Two separate store dashboards.
+Separate SMM and OTP order histories.
+Independent store ON/OFF controls.
+Real 5SIM integration.
+Custom OTP provider support.
+Live activation tracking.
+Secure wallet deductions and refunds.
+
+Both stores must work together without breaking any existing SMM Panel functionality.
+
+Quality, security, real functionality, database integrity, and a premium user experience are more important than rushing the implementation.

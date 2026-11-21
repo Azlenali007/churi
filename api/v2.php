@@ -42,6 +42,7 @@ switch ($action) {
         break;
 
     case 'services':
+        StoreManager::requireSmmEnabled(true);
         $rows = Database::fetchAll(
             "SELECT s.*, c.name AS category_name
              FROM services s
@@ -70,6 +71,7 @@ switch ($action) {
         break;
 
     case 'add':
+        StoreManager::requireSmmEnabled(true);
         $serviceId = (int)($input['service'] ?? 0);
         $link = (string)($input['link'] ?? '');
         $qty = (int)($input['quantity'] ?? 0);

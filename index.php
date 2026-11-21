@@ -1,6 +1,13 @@
 <?php
 require_once __DIR__ . '/includes/bootstrap.php';
 
+if (!StoreManager::isSmmEnabled()) {
+    if (StoreManager::isOtpEnabled()) {
+        Helpers::redirect('/otp/');
+    }
+    StoreManager::renderStoreUnavailable('smm');
+}
+
 $cmsRows = Database::fetchAll("SELECT * FROM cms_blocks");
 $cms = [];
 foreach ($cmsRows as $row) {
@@ -59,7 +66,7 @@ require __DIR__ . '/includes/public_header.php';
                     <p class="text-base sm:text-lg text-slate-600 leading-relaxed mb-8 max-w-2xl">
                         <?= Validator::e($hero['subtitle']) ?>
                     </p>
-                    <div class="flex flex-wrap items-center gap-4">
+                    <div class="flex flex-wrap items-center gap-3.5">
                         <a href="<?= Validator::e($hero['data']['cta_primary_link'] ?? '/register.php') ?>"
                            class="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white font-bold text-sm shadow-xl shadow-purple-500/25 transition">
                             <?= Validator::e($hero['data']['cta_primary_text'] ?? 'Get Started') ?>
@@ -69,6 +76,7 @@ require __DIR__ . '/includes/public_header.php';
                            class="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl bg-white border border-purple-200 hover:border-purple-400 text-purple-900 font-bold text-sm shadow-sm transition">
                             <?= Validator::e($hero['data']['cta_secondary_text'] ?? 'Explore Services') ?>
                         </a>
+                        <?= StoreManager::renderPublicOtpPill('py-3.5 px-6') ?>
                     </div>
                 </div>
 

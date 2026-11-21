@@ -64,6 +64,7 @@ if ($action === 'rzp_verify') {
 }
 
 if ($action === 'service_price') {
+    StoreManager::requireSmmEnabled(true);
     $sid = (int)($_GET['service_id'] ?? 0);
     $qty = max(1, (int)($_GET['quantity'] ?? 100));
     $svc = Database::fetch("SELECT * FROM services WHERE id = ? AND status = 'active' LIMIT 1", [$sid]);

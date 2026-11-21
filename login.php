@@ -1,7 +1,22 @@
 <?php
 require_once __DIR__ . '/includes/bootstrap.php';
+
+$resolvePostLoginUrl = function (): string {
+    $next = trim((string)($_POST['next'] ?? $_GET['next'] ?? ''));
+    if ($next !== '' && str_starts_with($next, '/') && !str_starts_with($next, '//') && !str_contains($next, "\n") && !str_contains($next, "\r")) {
+        return $next;
+    }
+    if (StoreManager::isSmmEnabled()) {
+        return '/user/dashboard.php';
+    }
+    if (StoreManager::isOtpEnabled()) {
+        return '/otp/dashboard.php';
+    }
+    return '/user/profile.php';
+};
+
 if (Auth::user()) {
-    Helpers::redirect('/user/dashboard.php');
+    Helpers::redirect($resolvePostLoginUrl());
 }
 
 $error = '';
@@ -15,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $res = Auth::attemptUserLogin($login, $password);
         if ($res['ok']) {
-            Helpers::redirect('/user/dashboard.php');
+            Helpers::redirect($resolvePostLoginUrl());
         }
         $error = $res['error'] ?? 'Login failed.';
     }
@@ -39,6 +54,9 @@ require __DIR__ . '/includes/public_header.php';
 
         <form method="POST" class="space-y-4">
             <?= CSRF::field() ?>
+            <?php if (!empty($_GET['next']) || !empty($_POST['next'])): ?>
+                <input type="hidden" name="next" value="<?= Validator::e((string)($_POST['next'] ?? $_GET['next'] ?? '')) ?>">
+            <?php endif; ?>
             <div>
                 <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Username or Email</label>
                 <input type="text" name="login" value="<?= Validator::e($_POST['login'] ?? '') ?>" required autofocus

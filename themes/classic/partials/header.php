@@ -30,15 +30,23 @@ $headerTagline = Helpers::setting('site_tagline', 'Grow Your Social Media');
             </div>
         </a>
 
+        <?php if (StoreManager::isSmmEnabled()): ?>
         <form action="/user/services.php" method="GET" class="relative w-full max-w-md hidden lg:block">
             <svg class="w-4 h-4 text-purple-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
             <input type="text" name="search" value="<?= Validator::e($_GET['search'] ?? '') ?>"
                    placeholder="Search services..."
                    class="w-full pl-10 pr-4 py-2 rounded-full bg-[#F3F1FC] border border-purple-100 focus:bg-white focus:border-purple-400 outline-none text-sm text-slate-800 placeholder-slate-400 transition">
         </form>
+        <?php endif; ?>
     </div>
 
     <div class="flex items-center gap-2 sm:gap-3.5 shrink-0">
+        <?php if (StoreManager::isOtpEnabled()): ?>
+        <a href="/otp/dashboard.php" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-extrabold shadow-sm hover:opacity-95 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M9 10h6M9 14h4"/></svg>
+            <span>OTP Store</span>
+        </a>
+        <?php endif; ?>
         <!-- Currency Selector Pill (Desktop + Mobile accessible) -->
         <div class="relative" x-data="smmCurrencySelector(window.__SMM_CURRENCY_CFG)">
             <button type="button" @click="openCurr = !openCurr"

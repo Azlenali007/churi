@@ -7,6 +7,10 @@ class OrderService
 {
     public static function placeOrder(int $userId, int $serviceId, string $link, int $quantity, array $options = []): array
     {
+        if (!StoreManager::isSmmEnabled()) {
+            return ['ok' => false, 'error' => 'SMM Store is currently disabled. New SMM orders cannot be placed.'];
+        }
+
         $user = Database::fetch("SELECT * FROM users WHERE id = ? LIMIT 1", [$userId]);
         if (!$user || $user['status'] !== 'active') {
             return ['ok' => false, 'error' => 'Account is not active.'];

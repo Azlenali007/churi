@@ -36,8 +36,13 @@ $socialLinks = [
         <div>
             <h4 class="font-bold text-white text-sm uppercase tracking-wider mb-4">Platform</h4>
             <ul class="space-y-2.5 text-sm text-purple-200/80">
-                <li><a href="/" class="hover:text-white transition">Home</a></li>
-                <li><a href="/services.php" class="hover:text-white transition">Services & Pricing</a></li>
+                <?php if (StoreManager::isSmmEnabled()): ?>
+                    <li><a href="/" class="hover:text-white transition">SMM Store Home</a></li>
+                    <li><a href="/services.php" class="hover:text-white transition">SMM Services &amp; Pricing</a></li>
+                <?php endif; ?>
+                <?php if (StoreManager::isOtpEnabled()): ?>
+                    <li><a href="/otp/" class="hover:text-white transition">OTP Activation Store</a></li>
+                <?php endif; ?>
                 <li><a href="/faq.php" class="hover:text-white transition">FAQ</a></li>
                 <li><a href="/contact.php" class="hover:text-white transition">Contact Us</a></li>
             </ul>
@@ -61,6 +66,13 @@ $socialLinks = [
         </div>
     </div>
 </footer>
+
+<?php if (StoreManager::isOtpEnabled() && !str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/otp')): ?>
+<!-- Mobile Floating OTP Store Switcher Pill -->
+<div class="md:hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-40">
+    <?= StoreManager::renderPublicOtpPill('shadow-2xl ring-4 ring-white/80') ?>
+</div>
+<?php endif; ?>
 
 <script src="/assets/js/app.js"></script>
 <?php

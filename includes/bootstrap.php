@@ -22,6 +22,9 @@ require_once __DIR__ . '/../core/CategoryMapper.php';
 require_once __DIR__ . '/../core/OrderService.php';
 require_once __DIR__ . '/../core/PaymentService.php';
 require_once __DIR__ . '/../core/ThemeManager.php';
+require_once __DIR__ . '/../core/StoreManager.php';
+require_once __DIR__ . '/../core/OtpProviderAdapter.php';
+require_once __DIR__ . '/../core/OtpService.php';
 
 // Secure error handling: log detailed errors, never display raw credentials or blank pages
 error_reporting(E_ALL);
@@ -71,6 +74,10 @@ try {
         CategoryMapper::ensureSchema();
         Helpers::setSetting('provider_import_schema_v2', '1', 'providers');
     }
+    if (Helpers::setting('dual_store_otp_schema_v1', '0') !== '1') {
+        StoreManager::ensureSchema();
+        Helpers::setSetting('dual_store_otp_schema_v1', '1', 'stores');
+    }
 } catch (Throwable $e) {
     Logger::errorFile('Database connection error: ' . $e->getMessage());
     if (!$isInstaller) {
@@ -81,7 +88,7 @@ try {
 }
 
 $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '';
-if (str_starts_with($scriptPath, '/user/') || str_starts_with($scriptPath, '/api/') || str_starts_with($scriptPath, '/admin/')) {
+if (str_starts_with($scriptPath, '/user/') || str_starts_with($scriptPath, '/otp/') || str_starts_with($scriptPath, '/api/') || str_starts_with($scriptPath, '/admin/')) {
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     header('Pragma: no-cache');
 }
