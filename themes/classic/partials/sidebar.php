@@ -24,6 +24,9 @@ if ($smmOn) {
     $navItems[] = ['file' => 'reseller-api.php',  'label' => 'Reseller API',      'icon' => '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>'];
     $navItems[] = ['file' => 'child-panel.php',   'label' => 'Child Panel',       'icon' => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'];
 }
+if ($otpOn || Helpers::setting('otp_api_enabled', '1') === '1') {
+    $navItems[] = ['file' => 'otp-reseller-api',  'href' => '/otp/reseller-api.php', 'label' => 'OTP Reseller API', 'icon' => '<rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M9 10h6M9 14h4"/>'];
+}
 $navItems[] = ['file' => 'tickets.php',       'label' => 'Support Tickets',   'icon' => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'];
 $navItems[] = ['file' => 'referrals.php',     'label' => 'Refer & Earn',      'icon' => '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>'];
 $navItems[] = ['file' => 'notifications.php', 'label' => 'Notifications',     'icon' => '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>', 'badge' => $unreadCount];
@@ -58,9 +61,10 @@ $navItems[] = ['file' => 'profile.php',       'label' => 'Profile & Settings','i
     <!-- Nav Items -->
     <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
         <?php foreach ($navItems as $item):
-            $isActive = $currentScript === $item['file'];
+            $isActive = empty($item['href']) && $currentScript === $item['file'];
+            $itemHref = $item['href'] ?? ('/user/' . $item['file']);
         ?>
-        <a href="/user/<?= $item['file'] ?>"
+        <a href="<?= Validator::e($itemHref) ?>"
            class="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition <?= $isActive ? 'smm-nav-active text-white' : 'text-purple-100/80 hover:bg-white/10 hover:text-white' ?>">
             <span class="flex items-center gap-3 min-w-0">
                 <svg class="w-5 h-5 shrink-0 <?= $isActive ? 'text-white' : 'text-purple-300' ?>" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><?= $item['icon'] ?></svg>

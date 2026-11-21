@@ -34,6 +34,7 @@ $formatActivation = static function (array $a) use ($dispCurrency, $showFullSms)
     return [
         'id'                => (int)$a['id'],
         'activation_code'   => (string)$a['activation_code'],
+        'source'            => (string)($a['source'] ?? 'direct'),
         'service_id'        => (int)$a['service_id'],
         'service_name'      => (string)($a['service_name'] ?? ''),
         'service_icon'      => (string)($a['service_icon'] ?? 'general'),

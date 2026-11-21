@@ -39,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $q = Validator::str($_GET['q'] ?? '', 80);
 $status = Validator::str($_GET['status'] ?? 'all', 30);
+$source = Validator::str($_GET['source'] ?? 'all', 20);
 $serviceId = (int)($_GET['service_id'] ?? 0);
 $countryId = (int)($_GET['country_id'] ?? 0);
 $providerId = (int)($_GET['provider_id'] ?? 0);
@@ -54,6 +55,10 @@ if ($q !== '') {
 if ($status !== 'all' && in_array($status, OTP_ACTIVATION_STATUSES, true)) {
     $where[] = "a.status = ?";
     $params[] = $status;
+}
+if (in_array($source, ['direct', 'api'], true)) {
+    $where[] = "a.source = ?";
+    $params[] = $source;
 }
 if ($serviceId > 0) {
     $where[] = "a.service_id = ?";
@@ -112,13 +117,18 @@ require __DIR__ . '/includes/header.php';
 ?>
 
 <!-- Filters -->
-<form method="GET" class="smm-card rounded-2xl p-4 mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 text-xs">
+<form method="GET" class="smm-card rounded-2xl p-4 mb-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2.5 text-xs">
     <input type="text" name="q" value="<?= Validator::e($q) ?>" placeholder="Code, user, phone, ref..." class="px-3 py-2 rounded-xl border border-purple-200">
     <select name="status" class="px-3 py-2 rounded-xl border border-purple-200 font-semibold">
         <option value="all">All Statuses</option>
         <?php foreach (OTP_ACTIVATION_STATUSES as $st): ?>
         <option value="<?= $st ?>" <?= $status === $st ? 'selected' : '' ?>><?= ucwords(str_replace('_', ' ', $st)) ?></option>
         <?php endforeach; ?>
+    </select>
+    <select name="source" class="px-3 py-2 rounded-xl border border-purple-200 font-semibold">
+        <option value="all" <?= $source === 'all' ? 'selected' : '' ?>>All Sources</option>
+        <option value="direct" <?= $source === 'direct' ? 'selected' : '' ?>>Direct Store</option>
+        <option value="api" <?= $source === 'api' ? 'selected' : '' ?>>OTP API</option>
     </select>
     <select name="service_id" class="px-3 py-2 rounded-xl border border-purple-200 font-semibold">
         <option value="0">All Services</option>
@@ -147,6 +157,11 @@ require __DIR__ . '/includes/header.php';
             <h2 class="text-lg font-extrabold text-slate-900"><?= Validator::e($detail['service_name']) ?> — <?= Validator::e(($detail['flag_emoji'] ? $detail['flag_emoji'] . ' ' : '') . $detail['country_name']) ?></h2>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-xs">
+            <?php if (($detail['source'] ?? 'direct') === 'api'): ?>
+            <span class="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-extrabold uppercase">OTP API</span>
+            <?php else: ?>
+            <span class="px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[11px] font-bold uppercase">Direct</span>
+            <?php endif; ?>
             <?= Helpers::statusBadge((string)$detail['status']) ?>
             <a href="/admin/otp-orders.php" class="px-3 py-1.5 rounded-xl bg-slate-100 font-bold text-slate-700">Close Detail</a>
         </div>
@@ -260,7 +275,14 @@ require __DIR__ . '/includes/header.php';
                 <?php else: foreach ($orders as $o): ?>
                 <tr class="hover:bg-purple-50/30">
                     <td class="px-4 py-3 font-mono font-bold text-slate-900">
-                        <?= Validator::e($o['activation_code']) ?>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span><?= Validator::e($o['activation_code']) ?></span>
+                            <?php if (($o['source'] ?? 'direct') === 'api'): ?>
+                            <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-sans text-[10px] font-extrabold uppercase">OTP API</span>
+                            <?php else: ?>
+                            <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-sans text-[10px] font-bold uppercase">Direct</span>
+                            <?php endif; ?>
+                        </div>
                         <div class="text-[10px] font-sans text-slate-400"><?= date('M d, H:i', strtotime($o['created_at'])) ?></div>
                     </td>
                     <td class="px-4 py-3 font-bold text-purple-700">@<?= Validator::e($o['username']) ?></td>

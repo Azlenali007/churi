@@ -21,6 +21,7 @@ foreach ($rawActive as $a) {
     $initialItems[] = [
         'id'                => (int)$a['id'],
         'activation_code'   => (string)$a['activation_code'],
+        'source'            => (string)($a['source'] ?? 'direct'),
         'service_name'      => (string)$a['service_name'],
         'country_name'      => (string)$a['country_name'],
         'country_flag'      => (string)($a['country_flag'] ?? ''),
@@ -96,6 +97,7 @@ require __DIR__ . '/includes/header.php';
                                   x-text="(a.country_flag ? a.country_flag + ' ' : '') + a.country_name"></span>
                             <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold uppercase"
                                   :class="statusClass(a.status)" x-text="a.status.replace('_',' ')"></span>
+                            <span x-show="a.source === 'api'" class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-extrabold uppercase">OTP API</span>
                         </div>
                         <div class="mt-1 text-[11px] text-slate-500 font-mono">
                             Code: <span class="font-bold text-slate-700" x-text="a.activation_code"></span>

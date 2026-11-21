@@ -20,6 +20,7 @@ $adminNavGroups = [
         ['file' => 'otp-countries.php',    'label' => 'OTP Countries',      'perm' => 'otp.manage'],
         ['file' => 'otp-providers.php',     'label' => 'OTP Providers',      'perm' => 'otp.providers'],
         ['file' => 'otp-provider-logs.php', 'label' => 'OTP API Logs',       'perm' => 'otp.providers'],
+        ['file' => 'otp-api.php',          'label' => 'OTP Reseller API',   'perm' => 'otp.manage'],
         ['file' => 'otp-refunds.php',       'label' => 'OTP Refunds',        'perm' => 'otp.refunds', 'badge' => $pendingOtpRefunds],
         ['file' => 'otp-settings.php',     'label' => 'OTP Settings',       'perm' => 'otp.manage'],
     ],

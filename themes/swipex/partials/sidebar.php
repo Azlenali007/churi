@@ -20,6 +20,9 @@ if ($smmOn) {
     $navItems[] = ['file' => 'reseller-api.php',  'label' => 'Reseller API',   'icon' => '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>'];
     $navItems[] = ['file' => 'child-panel.php',   'label' => 'Child Panel',    'icon' => '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>'];
 }
+if ($otpOn || Helpers::setting('otp_api_enabled', '1') === '1') {
+    $navItems[] = ['file' => 'otp-reseller-api',  'href' => '/otp/reseller-api.php', 'label' => 'OTP Reseller API', 'icon' => '<rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M9 10h6M9 14h4"/>'];
+}
 $navItems[] = ['file' => 'tickets.php',       'label' => 'Support Tickets','icon' => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'];
 $navItems[] = ['file' => 'referrals.php',     'label' => 'Refer & Earn',   'icon' => '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>'];
 $navItems[] = ['file' => 'notifications.php', 'label' => 'Notifications',  'icon' => '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>', 'badge' => $unreadCount];
@@ -47,9 +50,10 @@ $navItems[] = ['file' => 'profile.php',       'label' => 'Profile',        'icon
 
     <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
         <?php foreach ($navItems as $item):
-            $isActive = $currentScript === $item['file'];
+            $isActive = empty($item['href']) && $currentScript === $item['file'];
+            $itemHref = $item['href'] ?? ('/user/' . $item['file']);
         ?>
-        <a href="/user/<?= $item['file'] ?>"
+        <a href="<?= Validator::e($itemHref) ?>"
            @click="sidebarOpen = false"
            class="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition <?= $isActive ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900' ?>">
             <span class="flex items-center gap-3 min-w-0">

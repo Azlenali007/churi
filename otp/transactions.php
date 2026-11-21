@@ -18,6 +18,8 @@ $params = [$userId];
 
 if ($filter === 'otp') {
     $where[] = "reference_type = 'otp_activation'";
+} elseif ($filter === 'otp_api') {
+    $where[] = "reference_type = 'otp_activation' AND description LIKE 'OTP API%'";
 } elseif ($filter === 'smm') {
     $where[] = "reference_type = 'order'";
 } elseif ($filter === 'deposits') {
@@ -41,7 +43,7 @@ require __DIR__ . '/includes/header.php';
 
 <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
     <div class="flex flex-wrap items-center gap-2">
-        <?php foreach (['all' => 'All Activity', 'otp' => 'OTP Store', 'smm' => 'SMM Store', 'deposits' => 'Deposits', 'refunds' => 'Refunds'] as $k => $lbl): ?>
+        <?php foreach (['all' => 'All Activity', 'otp' => 'OTP Store', 'otp_api' => 'OTP API', 'smm' => 'SMM Store', 'deposits' => 'Deposits', 'refunds' => 'Refunds'] as $k => $lbl): ?>
         <a href="?filter=<?= $k ?>" class="px-4 py-2 rounded-xl text-xs font-extrabold transition <?= $filter === $k ? 'bg-purple-600 text-white shadow-sm' : 'bg-white border border-purple-100 text-slate-700 hover:bg-purple-50' ?>">
             <?= Validator::e($lbl) ?>
         </a>

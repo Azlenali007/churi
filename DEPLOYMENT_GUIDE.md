@@ -60,8 +60,11 @@ Configure these in **cPanel → Cron Jobs** (replace `/path/to/public_html` with
 2. In **cPanel → phpMyAdmin**, select your database and import (both migrations are repeat-safe and preserve all existing production data):
    - `/database/migrations/2026_11_dual_store_otp.sql` (if upgrading from an older SMM-only installation)
    - `/database/migrations/2026_11_otp_provider_management.sql` (adds OTP provider sync status, pricing rules, verified availability columns, immutable purchase FX snapshots, API latency logging, and seeds `RUB` currency)
-   *(Note: `StoreManager::ensureSchema()` also upgrades missing columns safely on first admin request.)*
-3. Add the 1-minute OTP sync cron job above so active OTP activations automatically finalize and refund on expiry.
-4. Configure independent store availability in **Admin → Store Management** (`/admin/store-management.php`), then configure 5SIM or custom providers in **Admin → OTP Providers** (`/admin/otp-providers.php`).
+   - `/database/migrations/2026_11_otp_reseller_api_and_importer.sql` (adds database-backed batch import jobs `otp_import_jobs`, OTP Reseller API tables `otp_api_keys`, `otp_api_pricing_rules`, `otp_api_logs`, `otp_api_idempotency`, `otp_activations.source`/`api_key_id`, and `otp_api_*` settings)
+   *(Note: `StoreManager::ensureSchema()` also upgrades missing tables/columns safely on first admin request.)*
+3. Ensure the root `/.htaccess` file includes `RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]` and `RewriteRule ^api/otp/v1/(.*)$ api/otp/v1/index.php?route=$1 [QSA,L]` so `Authorization: Bearer <OTP_API_KEY>` works on cPanel Apache/FastCGI.
+4. Add the 1-minute OTP sync cron job above so active OTP activations automatically finalize and refund on expiry.
+5. Configure independent store availability in **Admin → Store Management** (`/admin/store-management.php`), configure 5SIM or custom providers in **Admin → OTP Providers** (`/admin/otp-providers.php`), and manage reseller keys, pricing rules, rate limits, and usage logs in **Admin → OTP Reseller API** (`/admin/otp-api.php`).
+6. Users can generate their OTP Reseller API key, configure IP allowlists, and view live API documentation at `/otp/reseller-api.php` and `/otp/api-docs.php` (separate from the existing SMM Reseller API `/api/v2.php`, sharing the same unified user wallet).
 
 

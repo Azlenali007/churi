@@ -100,44 +100,85 @@ class OtpHttpClient
             ];
         }
 
-        $timeout = max(5, min(60, (int)($provider['timeout_seconds'] ?? Helpers::setting('otp_api_timeout', '20'))));
-        $ch = curl_init($url);
+        $baseTimeout = max(5, min(60, (int)($provider['timeout_seconds'] ?? Helpers::setting('otp_api_timeout', '20'))));
+        $timeout = ($action === 'getPrices' || $action === 'pricing') ? max(35, $baseTimeout) : $baseTimeout;
         $method = strtoupper($method);
-
         $curlHeaders = empty($headers) ? ['Accept: */*'] : $headers;
-        $opts = [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_CONNECTTIMEOUT => min(10, $timeout),
-            CURLOPT_TIMEOUT        => $timeout,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
-            CURLOPT_HTTPHEADER     => $curlHeaders,
-            CURLOPT_USERAGENT      => 'DualStore-OTP-Client/2.0',
-        ];
 
-        if ($method === 'POST') {
-            $opts[CURLOPT_POST] = true;
-            if (is_array($body)) {
-                $opts[CURLOPT_POSTFIELDS] = http_build_query($body);
-            } elseif (is_string($body)) {
-                $opts[CURLOPT_POSTFIELDS] = $body;
+        $currentUrl = $url;
+        $maxRedirects = 2;
+        $hops = 0;
+        $startedAt = microtime(true);
+        $raw = false;
+        $curlErrno = 0;
+        $curlErr = '';
+        $httpCode = 0;
+
+        while (true) {
+            $ch = curl_init($currentUrl);
+            $opts = [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_ENCODING       => '', // Accept gzip/deflate for large getPrices JSON responses
+                CURLOPT_CONNECTTIMEOUT => min(15, $timeout),
+                CURLOPT_TIMEOUT        => $timeout,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_HTTPHEADER     => $curlHeaders,
+                CURLOPT_USERAGENT      => 'DualStore-OTP-Client/2.1',
+            ];
+
+            if ($method === 'POST') {
+                $opts[CURLOPT_POST] = true;
+                if (is_array($body)) {
+                    $opts[CURLOPT_POSTFIELDS] = http_build_query($body);
+                } elseif (is_string($body)) {
+                    $opts[CURLOPT_POSTFIELDS] = $body;
+                }
+            } elseif ($method !== 'GET') {
+                $opts[CURLOPT_CUSTOMREQUEST] = $method;
+                if ($body !== null) {
+                    $opts[CURLOPT_POSTFIELDS] = is_array($body) ? http_build_query($body) : (string)$body;
+                }
             }
-        } elseif ($method !== 'GET') {
-            $opts[CURLOPT_CUSTOMREQUEST] = $method;
-            if ($body !== null) {
-                $opts[CURLOPT_POSTFIELDS] = is_array($body) ? http_build_query($body) : (string)$body;
+
+            curl_setopt_array($ch, $opts);
+            $raw = curl_exec($ch);
+            $curlErrno = curl_errno($ch);
+            $curlErr = curl_error($ch);
+            $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $redirectUrl = (string)curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+            curl_close($ch);
+
+            // Safely follow up to 2 same-host or validated HTTP->HTTPS redirects (e.g. http://api1.5sim.net -> https://api1.5sim.net)
+            if ($curlErrno === 0 && in_array($httpCode, [301, 302, 303, 307, 308], true) && $redirectUrl !== '' && $hops < $maxRedirects) {
+                $redirErr = self::validateUrl($redirectUrl);
+                if ($redirErr !== null) {
+                    $elapsedMs = max(1, (int)round((microtime(true) - $startedAt) * 1000));
+                    $logId = self::logCall($providerId, $activationId, $action, $url, $httpCode, $elapsedMs, $body, '', 'error', 'Blocked unsafe redirect: ' . $redirErr, $secretToRedact);
+                    return [
+                        'ok'               => false,
+                        'uncertain'        => false,
+                        'http_code'        => $httpCode,
+                        'response_time_ms' => $elapsedMs,
+                        'log_id'           => $logId,
+                        'error'            => 'Blocked unsafe provider redirect.',
+                        'raw'              => '',
+                        'data'             => null,
+                    ];
+                }
+                $currentUrl = $redirectUrl;
+                if ($httpCode === 303) {
+                    $method = 'GET';
+                    $body = null;
+                }
+                $hops++;
+                continue;
             }
+            break;
         }
 
-        curl_setopt_array($ch, $opts);
-        $startedAt = microtime(true);
-        $raw = curl_exec($ch);
         $elapsedMs = max(1, (int)round((microtime(true) - $startedAt) * 1000));
-        $curlErrno = curl_errno($ch);
-        $curlErr = curl_error($ch);
-        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
         if ($raw === false || $curlErrno !== 0) {
             $isUncertain = in_array($curlErrno, [CURLE_OPERATION_TIMEDOUT, CURLE_GOT_NOTHING, CURLE_RECV_ERROR], true);
@@ -466,6 +507,7 @@ class FiveSimCatalogReference
         if (isset(self::COUNTRIES[$key])) {
             $info = self::COUNTRIES[$key];
             return [
+                'code'          => $providerCountryCode,
                 'provider_code' => $providerCountryCode,
                 'name'          => $info['name'],
                 'iso_code'      => $info['iso'],
@@ -479,6 +521,7 @@ class FiveSimCatalogReference
         }
         $iso = ctype_digit($cleanIso) ? ('C' . substr($cleanIso, 0, 9)) : substr($cleanIso, 0, 10);
         return [
+            'code'          => $providerCountryCode,
             'provider_code' => $providerCountryCode,
             'name'          => ctype_digit($providerCountryCode) ? ('Country #' . $providerCountryCode) : ucwords(str_replace(['_', '-'], ' ', $providerCountryCode)),
             'iso_code'      => $iso,

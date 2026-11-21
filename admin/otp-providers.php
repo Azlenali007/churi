@@ -601,41 +601,109 @@ require __DIR__ . '/includes/header.php';
                 </div>
             </div>
 
-            <!-- Final Import Report -->
+            <!-- Active Batch Import Progress Bar (DB-backed, survives page refresh) -->
+            <template x-if="activeJob && !['completed','cancelled'].includes(activeJob.status)">
+                <div class="rounded-2xl border p-5 space-y-3"
+                     :class="activeJob.status === 'failed' ? 'border-rose-200 bg-rose-50/70' : 'border-purple-200 bg-purple-50/70'">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-2.5 h-2.5 rounded-full"
+                                  :class="activeJob.status === 'failed' ? 'bg-rose-500' : 'bg-purple-600 animate-pulse'"></span>
+                            <h4 class="text-sm font-extrabold"
+                                :class="activeJob.status === 'failed' ? 'text-rose-900' : 'text-purple-900'">
+                                Job #<span x-text="activeJob.id"></span> &middot;
+                                <span x-text="activeJob.stage_message || activeJob.status"></span>
+                            </h4>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs">
+                            <span class="font-mono font-extrabold text-slate-700"
+                                  x-text="(activeJob.processed_records || 0) + ' / ' + (activeJob.total_records || 0) + ' (' + (activeJob.progress_percent || 0) + '%)'"></span>
+                            <button type="button" x-show="activeJob.status === 'failed' && lastImportMode" @click="executeImport(lastImportMode)"
+                                    class="px-3 py-1 rounded-lg bg-purple-600 text-white font-bold">Retry</button>
+                            <button type="button" x-show="activeJob.status !== 'failed'" @click="cancelActiveJob()"
+                                    class="px-3 py-1 rounded-lg bg-rose-100 text-rose-700 font-bold hover:bg-rose-200">Cancel</button>
+                        </div>
+                    </div>
+                    <div class="w-full h-2.5 bg-white rounded-full overflow-hidden border border-purple-100">
+                        <div class="h-full transition-all duration-300"
+                             :class="activeJob.status === 'failed' ? 'bg-rose-500' : 'bg-gradient-to-r from-purple-600 to-violet-500'"
+                             :style="'width:' + Math.max(activeJob.status === 'failed' ? 100 : 4, activeJob.progress_percent || 0) + '%'"></div>
+                    </div>
+                    <div class="flex flex-wrap gap-3 text-[11px] font-semibold text-slate-600">
+                        <span>Countries Found: <strong class="text-slate-900" x-text="activeJob.total_countries_found || 0"></strong></span>
+                        <span>Services Found: <strong class="text-slate-900" x-text="activeJob.total_services_found || 0"></strong></span>
+                        <span>New Services: <strong class="text-emerald-700" x-text="activeJob.new_services || 0"></strong></span>
+                        <span>Updated: <strong class="text-indigo-700" x-text="activeJob.updated_services || 0"></strong></span>
+                        <span>Skipped: <strong class="text-slate-700" x-text="activeJob.skipped_records || 0"></strong></span>
+                        <span>Failed: <strong class="text-rose-700" x-text="activeJob.failed_records || 0"></strong></span>
+                    </div>
+                    <template x-if="activeJob.status === 'failed' && activeJob.zero_reason">
+                        <div class="p-3 rounded-xl bg-white border border-rose-200 text-xs font-bold text-rose-800" x-text="activeJob.zero_reason"></div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Complete 11-Metric Import Report -->
             <template x-if="importReport">
-                <div class="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 space-y-3">
+                <div class="rounded-2xl border p-5 space-y-3"
+                     :class="importReport.zero_reason ? 'border-amber-200 bg-amber-50/70' : 'border-emerald-200 bg-emerald-50/70'">
                     <div class="flex items-center justify-between gap-2">
-                        <h4 class="text-sm font-extrabold text-emerald-900">Import / Sync Report (<span class="font-mono" x-text="importReport.mode"></span>)</h4>
+                        <h4 class="text-sm font-extrabold" :class="importReport.zero_reason ? 'text-amber-900' : 'text-emerald-900'">
+                            Import / Sync Report (<span class="font-mono" x-text="importReport.mode || importReport.job_type"></span>)
+                        </h4>
                         <button type="button" @click="importReport = null" class="text-xs font-bold text-slate-500 hover:text-slate-800">Dismiss</button>
                     </div>
-                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-center">
-                        <div class="p-3 rounded-xl bg-white border border-emerald-100">
-                            <div class="text-[10px] font-bold uppercase text-slate-400">Total Found</div>
-                            <div class="text-lg font-extrabold text-slate-900" x-text="importReport.total_found ?? 0"></div>
+                    <template x-if="importReport.zero_reason">
+                        <div class="p-3 rounded-xl bg-white border border-amber-300 text-xs font-bold text-amber-900" x-text="importReport.zero_reason"></div>
+                    </template>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5 text-center">
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Countries Found</div>
+                            <div class="text-lg font-extrabold text-slate-900" x-text="importReport.total_countries_found ?? 0"></div>
                         </div>
-                        <div class="p-3 rounded-xl bg-white border border-emerald-100">
-                            <div class="text-[10px] font-bold uppercase text-slate-400">New Imported</div>
-                            <div class="text-lg font-extrabold text-emerald-700" x-text="importReport.new_imported ?? 0"></div>
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">New Countries</div>
+                            <div class="text-lg font-extrabold text-emerald-700" x-text="importReport.new_countries ?? 0"></div>
                         </div>
-                        <div class="p-3 rounded-xl bg-white border border-emerald-100">
-                            <div class="text-[10px] font-bold uppercase text-slate-400">Existing Updated</div>
-                            <div class="text-lg font-extrabold text-indigo-700" x-text="importReport.existing_updated ?? 0"></div>
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Updated Countries</div>
+                            <div class="text-lg font-extrabold text-indigo-700" x-text="importReport.updated_countries ?? 0"></div>
                         </div>
-                        <div class="p-3 rounded-xl bg-white border border-emerald-100">
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Services Found</div>
+                            <div class="text-lg font-extrabold text-slate-900" x-text="importReport.total_services_found ?? importReport.total_found ?? 0"></div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">New Services</div>
+                            <div class="text-lg font-extrabold text-emerald-700" x-text="importReport.new_services ?? importReport.new_imported ?? 0"></div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Updated Services</div>
+                            <div class="text-lg font-extrabold text-indigo-700" x-text="importReport.updated_services ?? importReport.existing_updated ?? 0"></div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
                             <div class="text-[10px] font-bold uppercase text-slate-400">Prices Updated</div>
                             <div class="text-lg font-extrabold text-purple-700" x-text="importReport.prices_updated ?? 0"></div>
                         </div>
-                        <div class="p-3 rounded-xl bg-white border border-emerald-100">
-                            <div class="text-[10px] font-bold uppercase text-slate-400">Skipped</div>
-                            <div class="text-lg font-extrabold text-slate-600" x-text="importReport.skipped ?? 0"></div>
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Unsupported</div>
+                            <div class="text-lg font-extrabold text-amber-700" x-text="importReport.unsupported_records ?? 0"></div>
                         </div>
-                        <div class="p-3 rounded-xl bg-white border border-emerald-100">
-                            <div class="text-[10px] font-bold uppercase text-slate-400">Import Errors</div>
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Skipped</div>
+                            <div class="text-lg font-extrabold text-slate-600" x-text="importReport.skipped_records ?? importReport.skipped ?? 0"></div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-white border border-slate-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Failed Records</div>
+                            <div class="text-lg font-extrabold" :class="(importReport.failed_records || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'" x-text="importReport.failed_records ?? 0"></div>
+                        </div>
+                        <div class="p-3 rounded-xl bg-white border border-slate-100 col-span-2">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Error Count</div>
                             <div class="text-lg font-extrabold" :class="(importReport.error_count || 0) > 0 ? 'text-rose-600' : 'text-emerald-700'" x-text="importReport.error_count ?? 0"></div>
                         </div>
                     </div>
                     <template x-if="importReport.errors && importReport.errors.length > 0">
-                        <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1 max-h-32 overflow-y-auto">
+                        <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1 max-h-36 overflow-y-auto">
                             <template x-for="(err, idx) in importReport.errors" :key="idx">
                                 <div class="font-mono text-[11px]" x-text="err"></div>
                             </template>
@@ -644,28 +712,31 @@ require __DIR__ . '/includes/header.php';
                 </div>
             </template>
 
-            <!-- Live Preview Table -->
+            <!-- Live Paginated Preview Table (Fast even with 10,000+ 5SIM entries) -->
             <template x-if="previewMeta">
                 <div class="space-y-3">
+                    <template x-if="previewMeta.zero_reason">
+                        <div class="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs font-bold text-amber-900" x-text="previewMeta.zero_reason"></div>
+                    </template>
                     <div class="flex flex-wrap items-center justify-between gap-3 text-xs">
                         <div class="flex flex-wrap items-center gap-2">
-                            <input type="text" x-model="previewSearch" placeholder="Search service or country..."
+                            <input type="text" x-model="previewSearch" @input.debounce.300ms="loadPreviewPage(1)" placeholder="Search service or country..."
                                    class="px-3 py-2 rounded-xl border border-purple-200 w-52">
-                            <select x-model="previewFilterCountry" class="px-3 py-2 rounded-xl border border-purple-200 font-semibold">
+                            <select x-model="previewFilterCountry" @change="loadPreviewPage(1)" class="px-3 py-2 rounded-xl border border-purple-200 font-semibold">
                                 <option value="">All API Countries (<span x-text="previewCountries.length"></span>)</option>
-                                <template x-for="c in previewCountries" :key="c.provider_code">
-                                    <option :value="c.provider_code" x-text="(c.flag_emoji ? c.flag_emoji + ' ' : '') + c.name + ' (ID: ' + c.provider_code + ')'"></option>
+                                <template x-for="c in previewCountries" :key="c.provider_code || c.code">
+                                    <option :value="c.provider_code || c.code" x-text="(c.flag_emoji ? c.flag_emoji + ' ' : '') + c.name + ' (ID: ' + (c.provider_code || c.code) + ')'"></option>
                                 </template>
                             </select>
-                            <select x-model="previewFilterStatus" class="px-3 py-2 rounded-xl border border-purple-200 font-semibold">
-                                <option value="all">All Items</option>
+                            <select x-model="previewFilterStatus" @change="loadPreviewPage(1)" class="px-3 py-2 rounded-xl border border-purple-200 font-semibold">
+                                <option value="all">All Items (<span x-text="previewMeta.total_found"></span>)</option>
                                 <option value="new">New Only (<span x-text="previewMeta.new_count"></span>)</option>
                                 <option value="existing">Existing Only (<span x-text="previewMeta.existing_count"></span>)</option>
                             </select>
                         </div>
                         <div class="flex flex-wrap items-center gap-1.5">
-                            <button type="button" @click="selectAllFiltered()" class="px-3 py-1.5 rounded-xl bg-purple-100 text-purple-800 font-bold">Select Filtered</button>
-                            <button type="button" @click="selectMissingFiltered()" class="px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-bold">Select New Only</button>
+                            <button type="button" @click="selectAllFiltered()" class="px-3 py-1.5 rounded-xl bg-purple-100 text-purple-800 font-bold">Select Page</button>
+                            <button type="button" @click="selectMissingFiltered()" class="px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-bold">Select New on Page</button>
                             <button type="button" @click="selectedKeys = []" class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 font-bold">Clear</button>
                         </div>
                     </div>
@@ -687,10 +758,13 @@ require __DIR__ . '/includes/header.php';
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-purple-50">
-                                    <template x-if="filteredPreviewItems().length === 0">
+                                    <template x-if="previewPageLoading">
+                                        <tr><td colspan="7" class="px-4 py-8 text-center text-purple-700 font-bold">Loading page...</td></tr>
+                                    </template>
+                                    <template x-if="!previewPageLoading && previewItems.length === 0">
                                         <tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">No items match your current filter.</td></tr>
                                     </template>
-                                    <template x-for="item in filteredPreviewItems()" :key="item.key">
+                                    <template x-for="item in previewItems" :key="item.key">
                                         <tr class="hover:bg-purple-50/40">
                                             <td class="px-3 py-2.5">
                                                 <input type="checkbox" :value="item.key" x-model="selectedKeys" class="accent-purple-600">
@@ -718,6 +792,20 @@ require __DIR__ . '/includes/header.php';
                                     </template>
                                 </tbody>
                             </table>
+                        </div>
+                        <div class="px-4 py-2.5 bg-[#FAF8FF] border-t border-purple-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span class="text-slate-600 font-semibold">
+                                Showing page <strong x-text="previewPagination.page"></strong> of <strong x-text="previewPagination.total_pages"></strong>
+                                (<strong x-text="previewPagination.total_filtered"></strong> matching records,
+                                <strong x-text="previewMeta.total_countries_found || 0"></strong> countries,
+                                <strong x-text="previewMeta.total_services_found || 0"></strong> services)
+                            </span>
+                            <div class="flex items-center gap-1.5">
+                                <button type="button" @click="loadPreviewPage(previewPagination.page - 1)" :disabled="previewPagination.page <= 1 || previewPageLoading"
+                                        class="px-3 py-1 rounded-lg bg-white border border-purple-200 font-bold text-slate-700 disabled:opacity-40">&larr; Prev</button>
+                                <button type="button" @click="loadPreviewPage(previewPagination.page + 1)" :disabled="previewPagination.page >= previewPagination.total_pages || previewPageLoading"
+                                        class="px-3 py-1 rounded-lg bg-white border border-purple-200 font-bold text-slate-700 disabled:opacity-40">Next &rarr;</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1083,6 +1171,11 @@ function otpProviderHub() {
 
         importLoading: false,
         importExecuting: false,
+        previewPageLoading: false,
+        stagedJobId: 0,
+        activeJob: null,
+        lastImportMode: '',
+        batchAbortRequested: false,
         importForm: {
             apiCountry: '',
             apiService: '',
@@ -1102,6 +1195,7 @@ function otpProviderHub() {
         previewSearch: '',
         previewFilterCountry: '',
         previewFilterStatus: 'all',
+        previewPagination: { page: 1, per_page: 100, total_filtered: 0, total_pages: 1 },
         selectedKeys: [],
         importReport: null,
 
@@ -1117,6 +1211,9 @@ function otpProviderHub() {
         init() {
             if (!this.selectedProviderId && this.providers.length > 0) {
                 this.selectedProviderId = this.providers[0].id;
+            }
+            if (this.selectedProviderId) {
+                this.checkActiveImportJob();
             }
         },
 
@@ -1152,22 +1249,65 @@ function otpProviderHub() {
             }
         },
 
-        async postApi(payload) {
-            const res = await fetch('/api/admin-otp-provider.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-Token': this.csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json();
-            if (data.provider) {
-                this.updateProviderRow(data.provider);
+        async postApi(payload, timeoutMs = 70000) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const res = await fetch('/api/admin-otp-provider.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-Token': this.csrfToken,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify(payload),
+                    signal: controller.signal,
+                });
+                const rawText = await res.text();
+                let data = null;
+                try {
+                    data = JSON.parse(rawText);
+                } catch (parseErr) {
+                    const snippet = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 180);
+                    return {
+                        ok: false,
+                        error: `Server returned non-JSON response (HTTP ${res.status}): ${snippet || 'Empty response'}`,
+                    };
+                }
+                if (data && data.provider) {
+                    this.updateProviderRow(data.provider);
+                }
+                if (!res.ok && data && data.ok !== false) {
+                    data.ok = false;
+                    data.error = data.error || `Request failed with HTTP ${res.status}`;
+                }
+                return data || { ok: false, error: `Empty response (HTTP ${res.status})` };
+            } catch (err) {
+                if (err && err.name === 'AbortError') {
+                    return { ok: false, error: 'Request timed out waiting for the provider API. Try filtering by a specific country or retry.' };
+                }
+                return { ok: false, error: 'Network error communicating with server: ' + (err?.message || 'Unknown error') };
+            } finally {
+                clearTimeout(timer);
             }
-            return data;
+        },
+
+        async checkActiveImportJob() {
+            if (!this.selectedProviderId) return;
+            try {
+                const res = await fetch(`/api/admin-otp-provider.php?action=import_job_status&provider_id=${this.selectedProviderId}&job_type=services`, {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const data = await res.json();
+                if (data.ok && data.job && ['queued', 'fetching_countries', 'fetching_services', 'processing', 'importing'].includes(data.job.status)) {
+                    this.activeJob = data.job;
+                    this.showNotice('success', `Resuming active import job #${data.job.id} (${data.job.processed_records}/${data.job.total_records})...`);
+                    this.runBatchLoop(data.job.id);
+                }
+            } catch (e) {
+                // Silent check on init
+            }
         },
 
         async runQuickAction(providerId, action) {
@@ -1186,8 +1326,6 @@ function otpProviderHub() {
                 } else {
                     this.showNotice('error', data.error || 'Provider action failed.');
                 }
-            } catch (e) {
-                this.showNotice('error', 'Network error communicating with server.');
             } finally {
                 this.busyProvider = 0;
                 this.busyAction = '';
@@ -1211,6 +1349,9 @@ function otpProviderHub() {
             if (!this.selectedProviderId) return;
             this.importLoading = true;
             this.importReport = null;
+            this.previewSearch = '';
+            this.previewFilterCountry = '';
+            this.previewFilterStatus = 'all';
             try {
                 const data = await this.postApi({
                     action: 'fetch_preview',
@@ -1223,113 +1364,224 @@ function otpProviderHub() {
                     fixed_profit: this.importForm.fixed_profit,
                     min_price: this.importForm.min_price,
                     max_price: this.importForm.max_price,
+                    page: 1,
+                    per_page: 100,
                 });
                 if (!data.ok) {
                     this.showNotice('error', data.error || 'Failed to fetch service preview.');
                     return;
                 }
+                this.stagedJobId = data.staged_job_id || 0;
                 this.previewMeta = {
-                    total_found: data.total_found,
-                    new_count: data.new_count,
-                    existing_count: data.existing_count,
+                    total_found: data.total_found || 0,
+                    total_countries_found: data.total_countries_found || 0,
+                    total_services_found: data.total_services_found || 0,
+                    new_count: data.new_count || 0,
+                    existing_count: data.existing_count || 0,
+                    zero_reason: data.zero_reason || null,
                 };
                 this.previewItems = data.items || [];
                 this.previewCountries = data.countries || [];
+                this.previewPagination = data.pagination || { page: 1, per_page: 100, total_filtered: this.previewItems.length, total_pages: 1 };
                 this.selectedKeys = this.previewItems.filter(i => !i.exists_locally).map(i => i.key);
-                this.showNotice('success', `Fetched ${data.total_found} service/country entries from provider API (${data.new_count} new, ${data.existing_count} existing).`);
-            } catch (e) {
-                this.showNotice('error', 'Failed to load service preview from provider.');
+                if (data.zero_reason) {
+                    this.showNotice('error', data.zero_reason);
+                } else {
+                    this.showNotice('success', `Fetched ${data.total_found} service/country entries across ${data.total_countries_found} countries & ${data.total_services_found} services (${data.new_count} new, ${data.existing_count} existing).`);
+                }
             } finally {
                 this.importLoading = false;
             }
         },
 
-        filteredPreviewItems() {
-            const q = this.previewSearch.trim().toLowerCase();
-            return this.previewItems.filter(it => {
-                if (this.previewFilterCountry && String(it.country_code) !== String(this.previewFilterCountry)) return false;
-                if (this.previewFilterStatus === 'new' && it.exists_locally) return false;
-                if (this.previewFilterStatus === 'existing' && !it.exists_locally) return false;
-                if (q) {
-                    const hay = `${it.service_name} ${it.service_code} ${it.country_name} ${it.country_code} ${it.country_iso}`.toLowerCase();
-                    if (!hay.includes(q)) return false;
-                }
-                return true;
-            });
-        },
-
-        selectAllFiltered() {
-            this.selectedKeys = this.filteredPreviewItems().map(i => i.key);
-        },
-
-        selectMissingFiltered() {
-            this.selectedKeys = this.filteredPreviewItems().filter(i => !i.exists_locally).map(i => i.key);
-        },
-
-        toggleAllFiltered(checked) {
-            if (checked) {
-                this.selectAllFiltered();
-            } else {
-                this.selectedKeys = [];
-            }
-        },
-
-        async executeImport(mode) {
-            if (!this.selectedProviderId) return;
-            this.importExecuting = true;
+        async loadPreviewPage(page) {
+            if (!this.stagedJobId || !this.selectedProviderId || page < 1) return;
+            this.previewPageLoading = true;
             try {
-                const countryForImport = this.previewFilterCountry || this.importForm.apiCountry;
                 const data = await this.postApi({
-                    action: 'run_import',
+                    action: 'preview_page',
                     provider_id: this.selectedProviderId,
-                    mode,
-                    selected_keys: this.selectedKeys,
-                    country_code: mode === 'import_by_country' ? countryForImport : this.importForm.apiCountry,
-                    service_code: this.importForm.apiService,
+                    staged_job_id: this.stagedJobId,
+                    page,
+                    per_page: 100,
+                    search: this.previewSearch,
+                    country_filter: this.previewFilterCountry,
+                    status_filter: this.previewFilterStatus,
                     pricing_mode: this.importForm.pricing_mode,
                     fixed_selling_price: this.importForm.fixed_selling_price,
                     profit_margin: this.importForm.profit_margin,
                     fixed_profit: this.importForm.fixed_profit,
                     min_price: this.importForm.min_price,
                     max_price: this.importForm.max_price,
-                    auto_price_update: this.importForm.auto_price_update ? 1 : 0,
-                    override_existing_rules: this.importForm.override_existing_rules ? 1 : 0,
-                    import_status: this.importForm.import_status,
-                });
+                }, 30000);
                 if (!data.ok) {
-                    this.showNotice('error', data.error || 'Import operation failed.');
+                    this.showNotice('error', data.error || 'Failed to load preview page.');
                     return;
                 }
-                this.importReport = data;
-                this.showNotice('success', `Import complete (${mode}): ${data.new_imported || 0} new, ${data.existing_updated || 0} updated, ${data.prices_updated || 0} prices updated.`);
-                if (this.previewItems.length > 0 && (mode === 'import_all' || mode === 'import_missing_only' || mode === 'import_selected' || mode === 'import_by_country')) {
-                    const importedSet = new Set(mode === 'import_selected' ? this.selectedKeys : []);
-                    this.previewItems = this.previewItems.map(it => {
-                        if (mode === 'import_all' || mode === 'import_missing_only') {
-                            return { ...it, exists_locally: true };
-                        }
-                        if (mode === 'import_selected' && importedSet.has(it.key)) {
-                            return { ...it, exists_locally: true };
-                        }
-                        if (mode === 'import_by_country' && String(it.country_code) === String(countryForImport)) {
-                            return { ...it, exists_locally: true };
-                        }
-                        return it;
+                this.previewItems = data.items || [];
+                this.previewPagination = data.pagination || this.previewPagination;
+            } finally {
+                this.previewPageLoading = false;
+            }
+        },
+
+        selectAllFiltered() {
+            const set = new Set(this.selectedKeys);
+            this.previewItems.forEach(i => set.add(i.key));
+            this.selectedKeys = Array.from(set);
+        },
+
+        selectMissingFiltered() {
+            const set = new Set(this.selectedKeys);
+            this.previewItems.filter(i => !i.exists_locally).forEach(i => set.add(i.key));
+            this.selectedKeys = Array.from(set);
+        },
+
+        toggleAllFiltered(checked) {
+            if (checked) {
+                this.selectAllFiltered();
+            } else {
+                const pageKeys = new Set(this.previewItems.map(i => i.key));
+                this.selectedKeys = this.selectedKeys.filter(k => !pageKeys.has(k));
+            }
+        },
+
+        async executeImport(mode) {
+            if (!this.selectedProviderId) return;
+            this.lastImportMode = mode;
+
+            // sync_prices runs quickly in a single transaction
+            if (mode === 'sync_prices') {
+                this.importExecuting = true;
+                try {
+                    const data = await this.postApi({
+                        action: 'sync_prices',
+                        provider_id: this.selectedProviderId,
+                        country_code: this.previewFilterCountry || this.importForm.apiCountry,
                     });
-                    if (this.previewMeta) {
-                        const existingCnt = this.previewItems.filter(i => i.exists_locally).length;
-                        this.previewMeta = {
-                            ...this.previewMeta,
-                            existing_count: existingCnt,
-                            new_count: Math.max(0, this.previewItems.length - existingCnt),
-                        };
+                    if (!data.ok) {
+                        this.showNotice('error', data.error || 'Price sync failed.');
+                        return;
                     }
-                    this.selectedKeys = this.previewItems.filter(i => !i.exists_locally).map(i => i.key);
+                    this.importReport = data;
+                    this.showNotice(data.zero_reason ? 'error' : 'success', data.zero_reason || `Prices synced: ${data.updated_services || 0} checked, ${data.prices_updated || 0} updated.`);
+                } finally {
+                    this.importExecuting = false;
                 }
-            } catch (e) {
-                this.showNotice('error', 'Import request failed due to a network error.');
+                return;
+            }
+
+            this.importExecuting = true;
+            this.importReport = null;
+            this.batchAbortRequested = false;
+
+            const countryForImport = this.previewFilterCountry || this.importForm.apiCountry;
+            this.activeJob = {
+                id: '...',
+                status: 'fetching_services',
+                stage_message: 'Fetching Services',
+                total_records: 0,
+                processed_records: 0,
+                progress_percent: 5,
+            };
+
+            const startRes = await this.postApi({
+                action: 'start_import_job',
+                provider_id: this.selectedProviderId,
+                job_type: 'services',
+                mode,
+                staged_job_id: this.stagedJobId || 0,
+                selected_keys: this.selectedKeys,
+                country_code: mode === 'import_by_country' ? countryForImport : this.importForm.apiCountry,
+                service_code: this.importForm.apiService,
+                pricing_mode: this.importForm.pricing_mode,
+                fixed_selling_price: this.importForm.fixed_selling_price,
+                profit_margin: this.importForm.profit_margin,
+                fixed_profit: this.importForm.fixed_profit,
+                min_price: this.importForm.min_price,
+                max_price: this.importForm.max_price,
+                auto_price_update: this.importForm.auto_price_update ? 1 : 0,
+                override_existing_rules: this.importForm.override_existing_rules ? 1 : 0,
+                import_status: this.importForm.import_status,
+                batch_size: 100,
+            });
+
+            if (!startRes.ok) {
+                this.importExecuting = false;
+                if (startRes.job) {
+                    this.activeJob = startRes.job;
+                } else if (startRes.active_job) {
+                    this.activeJob = startRes.active_job;
+                } else {
+                    this.activeJob = null;
+                }
+                this.showNotice('error', startRes.error || 'Could not start import job.');
+                return;
+            }
+
+            this.activeJob = startRes.job;
+            if (startRes.done) {
+                this.importExecuting = false;
+                this.importReport = startRes.job;
+                this.showNotice(startRes.job?.zero_reason ? 'error' : 'success', startRes.job?.zero_reason || 'Import completed.');
+                return;
+            }
+
+            await this.runBatchLoop(startRes.job_id);
+        },
+
+        async runBatchLoop(jobId) {
+            this.importExecuting = true;
+            try {
+                let done = false;
+                let guard = 0;
+                while (!done && !this.batchAbortRequested && guard < 1000) {
+                    guard++;
+                    const step = await this.postApi({
+                        action: 'process_import_batch',
+                        provider_id: this.selectedProviderId,
+                        job_id: jobId,
+                        batch_size: 100,
+                    }, 60000);
+
+                    if (!step.ok) {
+                        if (step.job) this.activeJob = step.job;
+                        this.showNotice('error', step.error || 'Batch import encountered an error.');
+                        return;
+                    }
+                    this.activeJob = step.job;
+                    done = !!step.done || ['completed', 'failed', 'cancelled'].includes(step.job?.status);
+                }
+
+                if (this.activeJob && this.activeJob.status === 'completed') {
+                    this.importReport = this.activeJob;
+                    const r = this.activeJob;
+                    if (r.zero_reason) {
+                        this.showNotice('error', r.zero_reason);
+                    } else {
+                        this.showNotice('success', `Import complete: ${r.new_services} new service(s), ${r.updated_services} updated, ${r.new_countries} new countr(ies), ${r.prices_updated} price(s) updated.`);
+                    }
+                    if (this.stagedJobId > 0) {
+                        await this.loadPreviewPage(this.previewPagination.page || 1);
+                    }
+                }
             } finally {
                 this.importExecuting = false;
+            }
+        },
+
+        async cancelActiveJob() {
+            if (!this.activeJob || !this.activeJob.id || this.activeJob.id === '...') return;
+            this.batchAbortRequested = true;
+            const res = await this.postApi({
+                action: 'cancel_import_job',
+                provider_id: this.selectedProviderId,
+                job_id: this.activeJob.id,
+            });
+            if (res.ok) {
+                this.activeJob = null;
+                this.importExecuting = false;
+                this.showNotice('success', 'Import job cancelled.');
             }
         },
 
@@ -1351,8 +1603,6 @@ function otpProviderHub() {
                 }
                 this.availReport = data;
                 this.showNotice('success', `Availability verified across ${data.countries_checked} country(ies): ${data.available_services} available, ${data.unavailable_services} unavailable.`);
-            } catch (e) {
-                this.showNotice('error', 'Availability sync request failed.');
             } finally {
                 this.availLoading = false;
             }

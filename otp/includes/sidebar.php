@@ -25,6 +25,7 @@ if ($otpEnabled) {
 }
 $otpNav[] = ['href' => '/otp/activations.php', 'label' => 'Active Activations', 'badge' => $activeOtpCount, 'icon' => '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>'];
 $otpNav[] = ['href' => '/otp/history.php', 'label' => 'OTP History', 'icon' => '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/>'];
+$otpNav[] = ['href' => '/otp/reseller-api.php', 'active_paths' => ['/otp/reseller-api.php', '/otp/api-docs.php'], 'label' => 'OTP Reseller API', 'icon' => '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>'];
 
 $sharedNav = [
     ['href' => '/user/add-funds.php', 'label' => 'Wallet', 'icon' => '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h2"/>'],
@@ -75,7 +76,8 @@ $sharedNav = [
             <div class="px-3 mb-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">OTP Activations</div>
             <div class="space-y-1">
                 <?php foreach ($otpNav as $item):
-                    $isActive = ($currentPath === $item['href']);
+                    $activePaths = $item['active_paths'] ?? [$item['href']];
+                    $isActive = in_array($currentPath, $activePaths, true);
                     $cls = $isActive
                         ? 'bg-purple-600 text-white shadow-md shadow-purple-600/20 font-bold'
                         : (!empty($item['highlight'])

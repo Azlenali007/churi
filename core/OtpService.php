@@ -134,7 +134,7 @@ class OtpService
     /**
      * Live single service + country quote & availability check before purchase.
      */
-    public static function getLiveQuote(int $serviceId, int $countryId): array
+    public static function getLiveQuote(int $serviceId, int $countryId, ?string $operatorOverride = null): array
     {
         $service = Database::fetch(
             "SELECT s.*, p.id AS prov_id, p.name AS prov_name, p.adapter_type, p.custom_adapter_class,
@@ -149,7 +149,7 @@ class OtpService
             [$serviceId]
         );
         if (!$service) {
-            return ['ok' => false, 'error' => 'Selected OTP service is unavailable or inactive.'];
+            return ['ok' => false, 'error_code' => 'INVALID_SERVICE', 'error' => 'Selected OTP service is unavailable or inactive.'];
         }
 
         $country = Database::fetch(
@@ -168,23 +168,24 @@ class OtpService
             [$serviceId, (int)$service['prov_id'], $countryId]
         );
         if (!$country) {
-            return ['ok' => false, 'error' => 'Selected country is unavailable or disabled.'];
+            return ['ok' => false, 'error_code' => 'INVALID_COUNTRY', 'error' => 'Selected country is unavailable or disabled.'];
         }
         if (isset($country['map_status']) && ($country['map_status'] === 'inactive' || (int)$country['map_available'] === 0)) {
-            return ['ok' => false, 'error' => 'This service is currently disabled for the selected country.'];
+            return ['ok' => false, 'error_code' => 'SERVICE_UNAVAILABLE', 'error' => 'This service is currently disabled for the selected country.'];
         }
 
         $provCountry = (string)($country['map_country_code'] ?: $country['default_provider_code']);
         $provService = (string)($country['map_service_code'] ?: ($service['provider_service_code'] ?: $service['slug']));
-        $operator = (string)($country['map_operator'] ?: 'any');
+        $cleanOpOverride = $operatorOverride !== null ? preg_replace('/[^a-zA-Z0-9_\-]/', '', trim($operatorOverride)) : '';
+        $operator = $cleanOpOverride !== '' ? substr($cleanOpOverride, 0, 60) : (string)($country['map_operator'] ?: 'any');
 
         $adapter = OtpProviderFactory::make(self::extractProviderRow($service));
         $live = $adapter->getAvailabilityAndPrice($provCountry, $provService, $operator);
         if (empty($live['ok'])) {
-            return ['ok' => false, 'error' => self::formatProviderError($live['error'] ?? 'Provider availability check failed.')];
+            return ['ok' => false, 'error_code' => 'PROVIDER_ERROR', 'error' => self::formatProviderError($live['error'] ?? 'Provider availability check failed.')];
         }
         if (empty($live['available'])) {
-            return ['ok' => false, 'available' => false, 'count' => 0, 'error' => 'No numbers currently available from provider for this service & country.'];
+            return ['ok' => false, 'available' => false, 'count' => 0, 'error_code' => 'SERVICE_UNAVAILABLE', 'error' => 'No numbers currently available from provider for this service & country.'];
         }
 
         $liveCostRaw = $live['cost'] ?? ($country['map_provider_price'] ?? ($service['provider_price'] ?? null));
@@ -210,83 +211,124 @@ class OtpService
     }
 
     /**
-     * Direct One-Time Activation Purchase (Atomic Shared Wallet Debit + Real Provider Number Assignment).
+     * Unified One-Time Activation Purchase Engine (used by both Direct OTP Store and OTP Reseller API).
+     * Performs Atomic Shared Wallet Debit + Real Provider Number Assignment.
      */
-    public static function purchaseActivation(int $userId, int $serviceId, int $countryId, string $clientToken = ''): array
+    public static function purchaseActivation(int $userId, int $serviceId, int $countryId, string $clientToken = '', array $options = []): array
     {
-        if (!StoreManager::isOtpEnabled()) {
-            return ['ok' => false, 'error' => 'OTP Store is currently disabled.'];
+        $source = (($options['source'] ?? 'direct') === 'api') ? 'api' : 'direct';
+        $apiKeyId = !empty($options['api_key_id']) ? (int)$options['api_key_id'] : null;
+        $operatorOverride = isset($options['operator']) && trim((string)$options['operator']) !== '' ? trim((string)$options['operator']) : null;
+
+        if ($source === 'direct' && !StoreManager::isOtpEnabled()) {
+            return ['ok' => false, 'error_code' => 'STORE_DISABLED', 'error' => 'OTP Store is currently disabled.'];
         }
 
         $user = Database::fetch("SELECT * FROM users WHERE id = ? LIMIT 1", [$userId]);
         if (!$user || $user['status'] !== 'active') {
-            return ['ok' => false, 'error' => 'Account is not active.'];
+            return ['ok' => false, 'error_code' => 'API_DISABLED', 'error' => 'Account is not active.'];
         }
 
         // Enforce minimum wallet balance setting
         $minBal = Currency::normalize(Helpers::setting('otp_min_wallet_balance', '0'), 4);
         if (Currency::cmp((string)$user['wallet_balance'], $minBal, 4) < 0) {
-            return ['ok' => false, 'error' => 'Minimum wallet balance of ' . Currency::display($minBal, null, 2, true) . ' is required to buy OTP activations.'];
+            return [
+                'ok'         => false,
+                'error_code' => 'INSUFFICIENT_BALANCE',
+                'error'      => 'Minimum wallet balance of ' . Currency::display($minBal, null, 2, true) . ' is required to buy OTP activations.',
+            ];
         }
 
-        // Enforce active activations limit & daily purchase limit (rate limiting)
-        $maxActive = max(1, (int)Helpers::setting('otp_max_active_per_user', '5'));
+        // Enforce active activations limit & daily purchase limit
+        $maxActive = !empty($options['max_active_override'])
+            ? max(1, (int)$options['max_active_override'])
+            : max(1, (int)Helpers::setting('otp_max_active_per_user', '5'));
         $activeCount = (int)Database::fetchColumn(
             "SELECT COUNT(*) FROM otp_activations WHERE user_id = ? AND status IN ('processing','active','waiting_otp')",
             [$userId]
         );
         if ($activeCount >= $maxActive) {
-            return ['ok' => false, 'error' => "You already have {$activeCount} active activations (maximum {$maxActive} concurrent). Complete or cancel an active activation first."];
+            return [
+                'ok'         => false,
+                'error_code' => 'RATE_LIMIT_EXCEEDED',
+                'error'      => "You already have {$activeCount} active activations (maximum {$maxActive} concurrent). Complete or cancel an active activation first.",
+            ];
         }
 
-        $maxDaily = max(1, (int)Helpers::setting('otp_max_daily_per_user', '50'));
+        $maxDaily = !empty($options['max_daily_override'])
+            ? max(1, (int)$options['max_daily_override'])
+            : max(1, (int)Helpers::setting('otp_max_daily_per_user', '50'));
         $todayCount = (int)Database::fetchColumn(
             "SELECT COUNT(*) FROM otp_activations WHERE user_id = ? AND created_at >= CURDATE()",
             [$userId]
         );
         if ($todayCount >= $maxDaily) {
-            return ['ok' => false, 'error' => "Daily OTP purchase limit ({$maxDaily}) reached. Please try again tomorrow."];
+            return [
+                'ok'         => false,
+                'error_code' => 'RATE_LIMIT_EXCEEDED',
+                'error'      => "Daily OTP purchase limit ({$maxDaily}) reached. Please try again tomorrow.",
+            ];
         }
 
-        // Short burst throttle (prevent accidental double click within 2 seconds)
-        $idemKey = $clientToken !== '' ? 'otp_buy_' . $userId . '_' . hash('sha256', $clientToken) : 'otp_buy_' . $userId . '_' . bin2hex(random_bytes(8));
+        // Idempotency protection
+        $idemPrefix = ($source === 'api') ? 'otp_api_' : 'otp_buy_';
+        $idemKey = $clientToken !== '' ? $idemPrefix . $userId . '_' . hash('sha256', $clientToken) : $idemPrefix . $userId . '_' . bin2hex(random_bytes(8));
         $idemKey = substr($idemKey, 0, 96);
         $existingByIdem = Database::fetch("SELECT id, activation_code, status FROM otp_activations WHERE idempotency_key = ? LIMIT 1", [$idemKey]);
         if ($existingByIdem) {
             return [
                 'ok'            => false,
                 'duplicate'     => true,
+                'error_code'    => 'DUPLICATE_REQUEST',
                 'activation_id' => (int)$existingByIdem['id'],
                 'error'         => 'Duplicate activation request prevented.',
             ];
         }
 
         // Live provider quote & availability verification
-        $quote = self::getLiveQuote($serviceId, $countryId);
+        $quote = self::getLiveQuote($serviceId, $countryId, $operatorOverride);
         if (empty($quote['ok'])) {
-            return ['ok' => false, 'error' => $quote['error'] ?? 'Service is currently unavailable from provider.'];
+            return [
+                'ok'         => false,
+                'error_code' => (string)($quote['error_code'] ?? 'SERVICE_UNAVAILABLE'),
+                'error'      => $quote['error'] ?? 'Service is currently unavailable from provider.',
+            ];
         }
 
         $sellingPrice = Currency::normalize((string)$quote['selling_price'], 4);
+        if ($source === 'api' && class_exists('OtpResellerApi')) {
+            $resellerCalc = OtpResellerApi::calculateResellerPrice(
+                $sellingPrice,
+                (string)$quote['provider_cost_base'],
+                $serviceId,
+                $countryId,
+                $options['api_key_record'] ?? null
+            );
+            $sellingPrice = $resellerCalc['reseller_price'];
+        } elseif (!empty($options['custom_selling_price']) && Currency::cmp((string)$options['custom_selling_price'], '0', 4) > 0) {
+            $sellingPrice = Currency::normalize((string)$options['custom_selling_price'], 4);
+        }
+
         if (Currency::cmp($sellingPrice, '0', 4) <= 0) {
-            return ['ok' => false, 'error' => 'Invalid selling price configured for this OTP service.'];
+            return ['ok' => false, 'error_code' => 'SERVICE_UNAVAILABLE', 'error' => 'Invalid selling price configured for this OTP service.'];
         }
 
         $service = $quote['service'];
         $country = $quote['country'];
         $providerRow = $quote['provider_row'];
         $baseCode = Currency::getBaseCode();
-        $actCode = 'OTP-' . strtoupper(bin2hex(random_bytes(4)));
+        $actCode = ($source === 'api' ? 'OTPAPI-' : 'OTP-') . strtoupper(bin2hex(random_bytes(4)));
 
         // Step A: Atomic Shared Wallet Debit + Activation Record Creation (processing)
         Database::beginTransaction();
         try {
             $debitIdem = 'otp_debit_' . $idemKey;
+            $txDescPrefix = ($source === 'api') ? 'OTP API Purchase: ' : 'Direct OTP Purchase: ';
             $debit = Wallet::debit(
                 $userId,
                 $sellingPrice,
                 'debit',
-                'OTP Activation: ' . $service['name'] . ' (' . $country['name'] . ')',
+                $txDescPrefix . $service['name'] . ' (' . $country['name'] . ')',
                 'otp_activation',
                 null,
                 substr($debitIdem, 0, 100),
@@ -294,6 +336,7 @@ class OtpService
             );
             if (empty($debit['ok'])) {
                 Database::rollBack();
+                $debit['error_code'] = 'INSUFFICIENT_BALANCE';
                 return $debit;
             }
 
@@ -302,13 +345,15 @@ class OtpService
 
             $activationId = Database::insert(
                 "INSERT INTO otp_activations
-                 (activation_code, user_id, service_id, country_id, provider_id, provider_operator,
+                 (activation_code, user_id, source, api_key_id, service_id, country_id, provider_id, provider_operator,
                   provider_cost_raw, provider_cost, provider_currency, exchange_rate, selling_price, currency_code, profit,
                   status, can_cancel, can_complete, idempotency_key, wallet_tx_id, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, 1, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, 1, ?, ?, ?)",
                 [
                     $actCode,
                     $userId,
+                    $source,
+                    $apiKeyId,
                     $serviceId,
                     $countryId,
                     (int)$providerRow['id'],

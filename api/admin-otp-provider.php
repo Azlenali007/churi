@@ -1,24 +1,39 @@
 <?php
 /**
- * Admin AJAX API for OTP Provider Management
+ * Admin AJAX API for OTP Provider Management & Batch Service/Country Importer
  * Actions:
- *  - test_connection    : Real provider getBalance / test call -> updates connection_status & balance
- *  - check_balance      : Real provider getBalance call -> updates balance & last_balance_check
- *  - toggle_status      : Enable / Disable OTP provider
- *  - fetch_preview      : Live getPrices discovery preview with server-calculated prices
- *  - run_import         : Execute any of the 7 automatic service import / sync modes
- *  - sync_prices        : Sync latest provider prices & recalculate auto-updated selling prices
- *  - sync_availability  : Sync verified availability via getNumbersStatus with throttling
- *  - provider_stats     : Fresh provider card statistics from database
+ *  - test_connection      : Real provider getBalance / test call -> updates connection_status & balance
+ *  - check_balance        : Real provider getBalance call -> updates balance & last_balance_check
+ *  - toggle_status        : Enable / Disable OTP provider
+ *  - fetch_preview        : Live getPrices discovery staged in DB + returns paginated preview slice
+ *  - preview_page         : Fast paginated/filtered slice from staged preview job (no re-fetch)
+ *  - start_import_job     : Start persistent DB-backed batch import job (`services` or `countries`)
+ *  - process_import_batch : Process next batch of records & return real progress + final report
+ *  - import_job_status    : Check status/progress of a specific job or active/latest job for provider
+ *  - cancel_import_job    : Cancel an active import job and release provider lock
+ *  - run_import           : Legacy synchronous wrapper (kept for compatibility)
+ *  - sync_prices          : Sync latest provider prices & recalculate auto-updated selling prices
+ *  - sync_availability    : Sync verified availability via getNumbersStatus with throttling
+ *  - provider_stats       : Fresh provider card statistics from database
  */
 
 if (!defined('IS_ADMIN_CONTEXT')) {
     define('IS_ADMIN_CONTEXT', true);
 }
 
+@set_time_limit(90);
+@ini_set('memory_limit', '256M');
+
 require_once __DIR__ . '/../includes/bootstrap.php';
 
-$admin = Auth::requireAdmin('otp.providers');
+// Allow either otp.providers or otp.manage (for Country Importer in /admin/otp-countries.php)
+$admin = Auth::admin();
+if (!$admin) {
+    Helpers::jsonResponse(['ok' => false, 'error' => 'Admin authentication required.'], 401);
+}
+if (!Auth::hasPermission('otp.providers') && !Auth::hasPermission('otp.manage')) {
+    Helpers::jsonResponse(['ok' => false, 'error' => 'Insufficient admin permissions for OTP provider actions.'], 403);
+}
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -35,6 +50,12 @@ if ($rawBody !== false && trim($rawBody) !== '') {
 $input = array_merge($_GET, $_POST, $jsonBody);
 $action = trim((string)($input['action'] ?? ''));
 
+// Restrict non-country actions to otp.providers
+$countrySharedActions = ['start_import_job', 'process_import_batch', 'import_job_status', 'cancel_import_job', 'provider_stats'];
+if (!Auth::hasPermission('otp.providers') && !in_array($action, $countrySharedActions, true)) {
+    Helpers::jsonResponse(['ok' => false, 'error' => 'Permission otp.providers is required for this action.'], 403);
+}
+
 if ($method === 'POST') {
     $csrfCandidate = (string)($input['_csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
     if (!CSRF::verify($csrfCandidate)) {
@@ -44,13 +65,13 @@ if ($method === 'POST') {
 
 $providerId = (int)($input['provider_id'] ?? 0);
 
-// Lightweight per-admin, per-provider rate limit for external API sync actions (prevent accidental rapid hammering)
+// Lightweight per-admin, per-provider rate limit for external API sync actions (never throttle batch stepping)
 $heavyActions = ['test_connection', 'check_balance', 'fetch_preview', 'run_import', 'sync_prices', 'sync_availability'];
 if (in_array($action, $heavyActions, true)) {
     $rateKey = '_otp_prov_rl_' . $action . '_' . $providerId;
     $lastTs = (float)($_SESSION[$rateKey] ?? 0);
     $nowTs = microtime(true);
-    if (($nowTs - $lastTs) < 1.0) {
+    if (($nowTs - $lastTs) < 0.8) {
         Helpers::jsonResponse(['ok' => false, 'error' => 'Please wait a moment before sending another request to this provider.'], 429);
     }
     $_SESSION[$rateKey] = $nowTs;
@@ -60,6 +81,9 @@ if (in_array($action, $heavyActions, true)) {
  * Helper to fetch live provider card stats without ever exposing encrypted credentials.
  */
 $fetchProviderCardStats = static function (int $pid): ?array {
+    if ($pid <= 0) {
+        return null;
+    }
     $row = Database::fetch(
         "SELECT p.id, p.name, p.slug, p.adapter_type, p.base_url, p.currency_code, p.balance,
                 p.connection_status, p.last_balance_check, p.last_sync_at, p.last_availability_sync_at,
@@ -107,8 +131,70 @@ try {
         Helpers::jsonResponse(['ok' => true, 'provider' => $stats]);
     }
 
+    if ($action === 'import_job_status') {
+        $jobId = (int)($input['job_id'] ?? 0);
+        if ($jobId > 0) {
+            $job = OtpProviderImporter::getJobStatus($jobId);
+            if (!$job) {
+                Helpers::jsonResponse(['ok' => false, 'error' => 'Import job not found.'], 404);
+            }
+            Helpers::jsonResponse([
+                'ok'       => true,
+                'job'      => $job,
+                'provider' => $fetchProviderCardStats((int)$job['provider_id']),
+            ]);
+        }
+        if ($providerId <= 0) {
+            Helpers::jsonResponse(['ok' => false, 'error' => 'Provide job_id or provider_id.'], 422);
+        }
+        $jobType = isset($input['job_type']) && in_array($input['job_type'], ['services', 'countries'], true)
+            ? (string)$input['job_type']
+            : null;
+        $job = OtpProviderImporter::getActiveOrLatestJob($providerId, $jobType);
+        Helpers::jsonResponse([
+            'ok'       => true,
+            'job'      => $job,
+            'provider' => $fetchProviderCardStats($providerId),
+        ]);
+    }
+
     if ($method !== 'POST') {
         Helpers::jsonResponse(['ok' => false, 'error' => 'POST method required for this action.'], 405);
+    }
+
+    if ($action === 'process_import_batch') {
+        $jobId = (int)($input['job_id'] ?? 0);
+        if ($jobId <= 0) {
+            Helpers::jsonResponse(['ok' => false, 'error' => 'Invalid import job ID.'], 422);
+        }
+        $batchSize = isset($input['batch_size']) ? (int)$input['batch_size'] : null;
+        $res = OtpProviderImporter::processNextBatch($jobId, $batchSize);
+        $pid = (int)($res['job']['provider_id'] ?? $providerId);
+        if (!empty($res['done']) && !empty($res['job'])) {
+            $j = $res['job'];
+            Logger::activity(
+                'admin',
+                (int)$admin['id'],
+                'otp_provider.batch_import',
+                'otp_provider',
+                (string)$pid,
+                "Type={$j['job_type']}, Mode={$j['mode']}, Countries(new={$j['new_countries']},upd={$j['updated_countries']}), Services(new={$j['new_services']},upd={$j['updated_services']})"
+            );
+        }
+        if ($pid > 0) {
+            $res['provider'] = $fetchProviderCardStats($pid);
+        }
+        Helpers::jsonResponse($res);
+    }
+
+    if ($action === 'cancel_import_job') {
+        $jobId = (int)($input['job_id'] ?? 0);
+        if ($jobId <= 0 || $providerId <= 0) {
+            Helpers::jsonResponse(['ok' => false, 'error' => 'Valid job_id and provider_id are required.'], 422);
+        }
+        $res = OtpProviderImporter::cancelJob($jobId, $providerId);
+        $res['provider'] = $fetchProviderCardStats($providerId);
+        Helpers::jsonResponse($res);
     }
 
     if ($providerId <= 0) {
@@ -180,6 +266,8 @@ try {
             ? trim((string)$input['country_code']) : null;
         $serviceCode = isset($input['service_code']) && trim((string)$input['service_code']) !== ''
             ? trim((string)$input['service_code']) : null;
+        $page = max(1, (int)($input['page'] ?? 1));
+        $perPage = max(25, min(200, (int)($input['per_page'] ?? 100)));
 
         $pricingOpts = [
             'pricing_mode'        => (string)($input['pricing_mode'] ?? 'auto'),
@@ -190,9 +278,86 @@ try {
             'max_price'           => $input['max_price'] ?? null,
         ];
 
-        $preview = OtpProviderImporter::fetchPreview($providerId, $countryCode, $serviceCode, $pricingOpts);
+        $preview = OtpProviderImporter::startPreviewAndStage(
+            $providerId,
+            $countryCode,
+            $serviceCode,
+            $pricingOpts,
+            (int)$admin['id'],
+            $page,
+            $perPage
+        );
         $preview['provider'] = $fetchProviderCardStats($providerId);
         Helpers::jsonResponse($preview);
+    }
+
+    if ($action === 'preview_page') {
+        $stagedJobId = (int)($input['staged_job_id'] ?? 0);
+        if ($stagedJobId <= 0) {
+            Helpers::jsonResponse(['ok' => false, 'error' => 'No active preview session. Fetch preview first.'], 422);
+        }
+        $pricingOpts = [
+            'pricing_mode'        => (string)($input['pricing_mode'] ?? 'auto'),
+            'fixed_selling_price' => $input['fixed_selling_price'] ?? null,
+            'profit_margin'       => $input['profit_margin'] ?? Helpers::setting('otp_default_profit_margin', '25.00'),
+            'fixed_profit'        => $input['fixed_profit'] ?? '0',
+            'min_price'           => $input['min_price'] ?? null,
+            'max_price'           => $input['max_price'] ?? null,
+        ];
+        $slice = OtpProviderImporter::getPreviewPage(
+            $providerId,
+            $stagedJobId,
+            max(1, (int)($input['page'] ?? 1)),
+            max(25, min(200, (int)($input['per_page'] ?? 100))),
+            trim((string)($input['search'] ?? '')),
+            trim((string)($input['country_filter'] ?? '')),
+            trim((string)($input['status_filter'] ?? 'all')),
+            $pricingOpts
+        );
+        Helpers::jsonResponse($slice);
+    }
+
+    if ($action === 'start_import_job') {
+        $jobType = (($input['job_type'] ?? 'services') === 'countries') ? 'countries' : 'services';
+        $mode = (string)($input['mode'] ?? ($jobType === 'countries' ? 'import_countries' : 'import_all'));
+
+        if ($jobType === 'services') {
+            $allowedModes = ['import_all', 'import_by_country', 'import_selected', 'update_existing', 'import_missing_only'];
+            if (!in_array($mode, $allowedModes, true)) {
+                Helpers::jsonResponse(['ok' => false, 'error' => 'Invalid batch import mode selected.'], 422);
+            }
+        }
+
+        $selectedKeys = is_array($input['selected_keys'] ?? null) ? $input['selected_keys'] : [];
+        $reuseStagedId = !empty($input['staged_job_id']) ? (int)$input['staged_job_id'] : null;
+
+        $options = [
+            'country_code'            => $input['country_code'] ?? null,
+            'service_code'            => $input['service_code'] ?? null,
+            'pricing_mode'            => (string)($input['pricing_mode'] ?? 'auto'),
+            'fixed_selling_price'     => $input['fixed_selling_price'] ?? null,
+            'profit_margin'           => $input['profit_margin'] ?? Helpers::setting('otp_default_profit_margin', '25.00'),
+            'fixed_profit'            => $input['fixed_profit'] ?? '0',
+            'min_price'               => $input['min_price'] ?? null,
+            'max_price'               => $input['max_price'] ?? null,
+            'auto_price_update'       => !array_key_exists('auto_price_update', $input) || !empty($input['auto_price_update']),
+            'override_existing_rules' => !empty($input['override_existing_rules']),
+            'import_status'           => (string)($input['import_status'] ?? 'active'),
+            'link_services'           => !empty($input['link_services']),
+            'batch_size'              => (int)($input['batch_size'] ?? 100),
+        ];
+
+        $res = OtpProviderImporter::startBatchJob(
+            $providerId,
+            (int)$admin['id'],
+            $jobType,
+            $mode,
+            $selectedKeys,
+            $options,
+            $reuseStagedId
+        );
+        $res['provider'] = $fetchProviderCardStats($providerId);
+        Helpers::jsonResponse($res);
     }
 
     if ($action === 'run_import') {
