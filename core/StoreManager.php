@@ -144,9 +144,9 @@ class StoreManager
             `slug` VARCHAR(80) NOT NULL,
             `adapter_type` ENUM('fivesim','custom_json','custom_php') NOT NULL DEFAULT 'fivesim',
             `custom_adapter_class` VARCHAR(120) NULL,
-            `base_url` VARCHAR(255) NOT NULL DEFAULT 'https://5sim.net',
+            `base_url` VARCHAR(255) NOT NULL DEFAULT 'http://api1.5sim.net/stubs/handler_api.php',
             `api_key_enc` TEXT NULL,
-            `auth_type` ENUM('bearer','header','query','post_body') NOT NULL DEFAULT 'bearer',
+            `auth_type` ENUM('bearer','header','query','post_body') NOT NULL DEFAULT 'query',
             `auth_header_name` VARCHAR(80) NULL DEFAULT 'Authorization',
             `auth_param_name` VARCHAR(80) NULL DEFAULT 'api_key',
             `request_method` ENUM('GET','POST') NOT NULL DEFAULT 'GET',
@@ -161,7 +161,10 @@ class StoreManager
             `exchange_rate` DECIMAL(16,6) NOT NULL DEFAULT 1.000000,
             `rate_mode` ENUM('auto','manual') NOT NULL DEFAULT 'auto',
             `balance` DECIMAL(16,4) NULL,
+            `connection_status` ENUM('unknown','connected','failed') NOT NULL DEFAULT 'unknown',
             `last_balance_check` DATETIME NULL,
+            `last_sync_at` DATETIME NULL,
+            `last_availability_sync_at` DATETIME NULL,
             `last_error` TEXT NULL,
             `status` ENUM('active','inactive') NOT NULL DEFAULT 'active',
             `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -179,10 +182,15 @@ class StoreManager
             `description` TEXT NULL,
             `provider_id` INT UNSIGNED NULL,
             `provider_service_code` VARCHAR(100) NULL,
+            `provider_price` DECIMAL(16,4) NULL,
+            `provider_currency` VARCHAR(10) NULL,
             `selling_price` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
             `profit_margin` DECIMAL(8,2) NOT NULL DEFAULT 25.00,
+            `fixed_profit` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
             `min_price` DECIMAL(16,4) NULL,
             `max_price` DECIMAL(16,4) NULL,
+            `auto_price_update` TINYINT(1) NOT NULL DEFAULT 1,
+            `last_price_sync_at` DATETIME NULL,
             `is_popular` TINYINT(1) NOT NULL DEFAULT 0,
             `sort_order` INT NOT NULL DEFAULT 0,
             `status` ENUM('active','inactive') NOT NULL DEFAULT 'active',
@@ -219,8 +227,20 @@ class StoreManager
             `provider_service_code` VARCHAR(100) NULL,
             `provider_country_code` VARCHAR(100) NULL,
             `provider_operator` VARCHAR(80) NOT NULL DEFAULT 'any',
+            `provider_price` DECIMAL(16,4) NULL,
+            `provider_cost_base` DECIMAL(16,4) NULL,
             `custom_selling_price` DECIMAL(16,4) NULL,
+            `pricing_mode` ENUM('auto','fixed') NOT NULL DEFAULT 'auto',
+            `profit_margin` DECIMAL(8,2) NULL,
+            `fixed_profit` DECIMAL(16,4) NULL,
+            `min_price` DECIMAL(16,4) NULL,
+            `max_price` DECIMAL(16,4) NULL,
+            `auto_price_update` TINYINT(1) NOT NULL DEFAULT 1,
             `is_available` TINYINT(1) NOT NULL DEFAULT 1,
+            `available_count` INT UNSIGNED NOT NULL DEFAULT 0,
+            `availability_verified` TINYINT(1) NOT NULL DEFAULT 0,
+            `last_price_sync_at` DATETIME NULL,
+            `last_availability_sync_at` DATETIME NULL,
             `status` ENUM('active','inactive') NOT NULL DEFAULT 'active',
             `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -242,12 +262,14 @@ class StoreManager
             `provider_id` INT UNSIGNED NULL,
             `provider_order_id` VARCHAR(120) NULL,
             `provider_operator` VARCHAR(80) NULL,
+            `provider_cost_raw` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
             `phone_number` VARCHAR(40) NULL,
             `otp_code` VARCHAR(64) NULL,
             `sms_text` TEXT NULL,
             `sms_received_at` DATETIME NULL,
             `provider_cost` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
             `provider_currency` VARCHAR(10) NOT NULL DEFAULT 'RUB',
+            `exchange_rate` DECIMAL(16,6) NOT NULL DEFAULT 1.000000,
             `selling_price` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
             `currency_code` VARCHAR(10) NOT NULL DEFAULT 'INR',
             `profit` DECIMAL(16,4) NOT NULL DEFAULT 0.0000,
@@ -289,6 +311,7 @@ class StoreManager
             `action` VARCHAR(60) NOT NULL,
             `endpoint` VARCHAR(255) NULL,
             `http_code` INT NULL,
+            `response_time_ms` INT UNSIGNED NULL,
             `request_payload` MEDIUMTEXT NULL,
             `response_payload` MEDIUMTEXT NULL,
             `status` ENUM('ok','error') NOT NULL DEFAULT 'ok',
@@ -327,6 +350,65 @@ class StoreManager
             CONSTRAINT `fk_otp_ref_activation` FOREIGN KEY (`activation_id`) REFERENCES `otp_activations` (`id`) ON DELETE CASCADE,
             CONSTRAINT `fk_otp_ref_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        // Repeat-safe column upgrades on pre-existing OTP tables
+        $addMissingColumns = function (string $table, array $colDefs) use ($pdo): void {
+            try {
+                $existing = [];
+                foreach (Database::fetchAll("SHOW COLUMNS FROM `{$table}`") as $c) {
+                    $existing[$c['Field']] = true;
+                }
+                foreach ($colDefs as $col => $alterSql) {
+                    if (empty($existing[$col])) {
+                        $pdo->exec("ALTER TABLE `{$table}` {$alterSql}");
+                    }
+                }
+            } catch (Throwable $e) {
+                Logger::errorFile("StoreManager::ensureSchema {$table} alter warning: " . $e->getMessage());
+            }
+        };
+
+        $addMissingColumns('otp_providers', [
+            'connection_status'         => "ADD COLUMN `connection_status` ENUM('unknown','connected','failed') NOT NULL DEFAULT 'unknown' AFTER `balance`",
+            'last_sync_at'              => "ADD COLUMN `last_sync_at` DATETIME NULL AFTER `last_balance_check`",
+            'last_availability_sync_at' => "ADD COLUMN `last_availability_sync_at` DATETIME NULL AFTER `last_sync_at`",
+        ]);
+        $addMissingColumns('otp_services', [
+            'provider_price'     => "ADD COLUMN `provider_price` DECIMAL(16,4) NULL AFTER `provider_service_code`",
+            'provider_currency'  => "ADD COLUMN `provider_currency` VARCHAR(10) NULL AFTER `provider_price`",
+            'fixed_profit'       => "ADD COLUMN `fixed_profit` DECIMAL(16,4) NOT NULL DEFAULT 0.0000 AFTER `profit_margin`",
+            'auto_price_update'  => "ADD COLUMN `auto_price_update` TINYINT(1) NOT NULL DEFAULT 1 AFTER `max_price`",
+            'last_price_sync_at' => "ADD COLUMN `last_price_sync_at` DATETIME NULL AFTER `auto_price_update`",
+        ]);
+        $addMissingColumns('otp_service_provider_mappings', [
+            'provider_price'            => "ADD COLUMN `provider_price` DECIMAL(16,4) NULL AFTER `provider_operator`",
+            'provider_cost_base'        => "ADD COLUMN `provider_cost_base` DECIMAL(16,4) NULL AFTER `provider_price`",
+            'pricing_mode'              => "ADD COLUMN `pricing_mode` ENUM('auto','fixed') NOT NULL DEFAULT 'auto' AFTER `custom_selling_price`",
+            'profit_margin'             => "ADD COLUMN `profit_margin` DECIMAL(8,2) NULL AFTER `pricing_mode`",
+            'fixed_profit'              => "ADD COLUMN `fixed_profit` DECIMAL(16,4) NULL AFTER `profit_margin`",
+            'min_price'                 => "ADD COLUMN `min_price` DECIMAL(16,4) NULL AFTER `fixed_profit`",
+            'max_price'                 => "ADD COLUMN `max_price` DECIMAL(16,4) NULL AFTER `min_price`",
+            'auto_price_update'         => "ADD COLUMN `auto_price_update` TINYINT(1) NOT NULL DEFAULT 1 AFTER `max_price`",
+            'available_count'           => "ADD COLUMN `available_count` INT UNSIGNED NOT NULL DEFAULT 0 AFTER `is_available`",
+            'availability_verified'     => "ADD COLUMN `availability_verified` TINYINT(1) NOT NULL DEFAULT 0 AFTER `available_count`",
+            'last_price_sync_at'        => "ADD COLUMN `last_price_sync_at` DATETIME NULL AFTER `availability_verified`",
+            'last_availability_sync_at' => "ADD COLUMN `last_availability_sync_at` DATETIME NULL AFTER `last_price_sync_at`",
+        ]);
+        $addMissingColumns('otp_activations', [
+            'provider_cost_raw' => "ADD COLUMN `provider_cost_raw` DECIMAL(16,4) NOT NULL DEFAULT 0.0000 AFTER `provider_operator`",
+            'exchange_rate'     => "ADD COLUMN `exchange_rate` DECIMAL(16,6) NOT NULL DEFAULT 1.000000 AFTER `provider_currency`",
+        ]);
+        $addMissingColumns('otp_provider_logs', [
+            'response_time_ms' => "ADD COLUMN `response_time_ms` INT UNSIGNED NULL AFTER `http_code`",
+        ]);
+
+        // Seed RUB currency if missing so 5SIM RUB->Base FX conversion works reliably
+        try {
+            $pdo->exec("INSERT IGNORE INTO `currencies` (`code`, `name`, `symbol`, `exchange_rate`, `is_base`, `is_manual_override`, `rate_source`, `update_status`, `status`) VALUES ('RUB', 'Russian Ruble', '₽', 1.150000, 0, 0, 'initial_seed', 'manual', 'inactive')");
+            Currency::clearCache();
+        } catch (Throwable $e) {
+            Logger::errorFile('StoreManager::ensureSchema RUB currency seed warning: ' . $e->getMessage());
+        }
 
         // Safely extend support_tickets & notifications if columns don't exist yet
         $ticketCols = [];

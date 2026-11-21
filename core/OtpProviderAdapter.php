@@ -1,14 +1,14 @@
 <?php
 /**
  * Real OTP Provider Integration Engine
- * - Built-in Official 5SIM v1 API Adapter
- * - Configurable Custom JSON Provider Adapter
+ * - Built-in 5SIM API1 Adapter (Exact Protocol: http://api1.5sim.net/stubs/handler_api.php)
+ * - Configurable Custom JSON/REST Provider Adapter (kept strictly separate from 5SIM)
  * - Extensible Custom PHP Provider Adapter Loader (/core/otp_adapters/*.php)
  *
  * Security:
  * - API credentials stay strictly server-side (AES-256-GCM encrypted in DB).
- * - Sensitive headers/params redacted before logging to otp_provider_logs.
- * - URL validation blocks non-HTTP schemes and metadata/internal addresses in production.
+ * - Sensitive headers, query params, and secrets are redacted before saving to otp_provider_logs.
+ * - URL validation blocks non-HTTP schemes, metadata endpoints, and private/local IPs in production.
  */
 
 interface OtpProviderInterface
@@ -16,9 +16,12 @@ interface OtpProviderInterface
     public function testConnection(): array;
     public function getBalance(): array;
     public function getCountries(): array;
+    public function getPrices(?string $countryCode = null, ?string $serviceCode = null): array;
+    public function getNumbersStatus(?string $countryCode = null, ?string $operator = null): array;
     public function getAvailabilityAndPrice(string $countryCode, string $serviceCode, string $operator = 'any'): array;
     public function buyActivation(string $countryCode, string $serviceCode, string $operator = 'any', ?int $activationId = null): array;
     public function checkActivation(string $providerOrderId, ?int $activationId = null): array;
+    public function setActivationStatus(string $providerOrderId, int $statusCode, ?int $activationId = null): array;
     public function cancelActivation(string $providerOrderId, ?int $activationId = null): array;
     public function finishActivation(string $providerOrderId, ?int $activationId = null): array;
 }
@@ -69,7 +72,7 @@ class OtpHttpClient
     }
 
     /**
-     * Execute HTTP request via cURL and persist redacted log to otp_provider_logs.
+     * Execute HTTP request via cURL, measure response time in ms, and persist redacted log to otp_provider_logs.
      */
     public static function request(
         array $provider,
@@ -81,17 +84,27 @@ class OtpHttpClient
         ?int $activationId = null,
         ?string $secretToRedact = null
     ): array {
+        $providerId = (int)($provider['id'] ?? 0);
         $urlErr = self::validateUrl($url);
         if ($urlErr !== null) {
-            self::logCall((int)($provider['id'] ?? 0), $activationId, $action, $url, 0, $body, '', 'error', $urlErr, $secretToRedact);
-            return ['ok' => false, 'uncertain' => false, 'http_code' => 0, 'error' => $urlErr, 'raw' => '', 'data' => null];
+            $logId = self::logCall($providerId, $activationId, $action, $url, 0, 0, $body, '', 'error', $urlErr, $secretToRedact);
+            return [
+                'ok'               => false,
+                'uncertain'        => false,
+                'http_code'        => 0,
+                'response_time_ms' => 0,
+                'log_id'           => $logId,
+                'error'            => $urlErr,
+                'raw'              => '',
+                'data'             => null,
+            ];
         }
 
         $timeout = max(5, min(60, (int)($provider['timeout_seconds'] ?? Helpers::setting('otp_api_timeout', '20'))));
         $ch = curl_init($url);
         $method = strtoupper($method);
 
-        $curlHeaders = array_merge(['Accept: application/json'], $headers);
+        $curlHeaders = empty($headers) ? ['Accept: */*'] : $headers;
         $opts = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => false,
@@ -100,7 +113,7 @@ class OtpHttpClient
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_HTTPHEADER     => $curlHeaders,
-            CURLOPT_USERAGENT      => 'DualStore-OTP-Client/1.0',
+            CURLOPT_USERAGENT      => 'DualStore-OTP-Client/2.0',
         ];
 
         if ($method === 'POST') {
@@ -118,24 +131,27 @@ class OtpHttpClient
         }
 
         curl_setopt_array($ch, $opts);
+        $startedAt = microtime(true);
         $raw = curl_exec($ch);
+        $elapsedMs = max(1, (int)round((microtime(true) - $startedAt) * 1000));
         $curlErrno = curl_errno($ch);
         $curlErr = curl_error($ch);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
         if ($raw === false || $curlErrno !== 0) {
-            // Network timeout or mid-flight connection reset -> uncertain outcome if buying
             $isUncertain = in_array($curlErrno, [CURLE_OPERATION_TIMEDOUT, CURLE_GOT_NOTHING, CURLE_RECV_ERROR], true);
             $errMsg = 'Provider connection error: ' . ($curlErr ?: 'Unable to reach provider API');
-            self::logCall((int)($provider['id'] ?? 0), $activationId, $action, $url, $httpCode, $body, '', 'error', $errMsg, $secretToRedact);
+            $logId = self::logCall($providerId, $activationId, $action, $url, $httpCode, $elapsedMs, $body, '', 'error', $errMsg, $secretToRedact);
             return [
-                'ok'        => false,
-                'uncertain' => $isUncertain,
-                'http_code' => $httpCode,
-                'error'     => $errMsg,
-                'raw'       => '',
-                'data'      => null,
+                'ok'               => false,
+                'uncertain'        => $isUncertain,
+                'http_code'        => $httpCode,
+                'response_time_ms' => $elapsedMs,
+                'log_id'           => $logId,
+                'error'            => $errMsg,
+                'raw'              => '',
+                'data'             => null,
             ];
         }
 
@@ -145,27 +161,75 @@ class OtpHttpClient
 
         $logStatus = $isHttpOk ? 'ok' : 'error';
         $errMsg = $isHttpOk ? null : self::extractErrorMessage($rawStr, $decoded, $httpCode);
-        self::logCall((int)($provider['id'] ?? 0), $activationId, $action, $url, $httpCode, $body, $rawStr, $logStatus, $errMsg, $secretToRedact);
+        $logId = self::logCall($providerId, $activationId, $action, $url, $httpCode, $elapsedMs, $body, $rawStr, $logStatus, $errMsg, $secretToRedact);
 
         if (!$isHttpOk) {
             return [
-                'ok'        => false,
-                'uncertain' => ($httpCode >= 500 && $httpCode !== 501),
-                'http_code' => $httpCode,
-                'error'     => $errMsg,
-                'raw'       => $rawStr,
-                'data'      => is_array($decoded) ? $decoded : null,
+                'ok'               => false,
+                'uncertain'        => ($httpCode >= 500 && $httpCode !== 501),
+                'http_code'        => $httpCode,
+                'response_time_ms' => $elapsedMs,
+                'log_id'           => $logId,
+                'error'            => $errMsg,
+                'raw'              => $rawStr,
+                'data'             => is_array($decoded) ? $decoded : null,
             ];
         }
 
         return [
-            'ok'        => true,
-            'uncertain' => false,
-            'http_code' => $httpCode,
-            'error'     => null,
-            'raw'       => $rawStr,
-            'data'      => is_array($decoded) ? $decoded : $rawStr,
+            'ok'               => true,
+            'uncertain'        => false,
+            'http_code'        => $httpCode,
+            'response_time_ms' => $elapsedMs,
+            'log_id'           => $logId,
+            'error'            => null,
+            'raw'              => $rawStr,
+            'data'             => is_array($decoded) ? $decoded : $rawStr,
         ];
+    }
+
+    /**
+     * Update a previously logged call when an HTTP 200 response actually contains an application-level API error
+     * (e.g., 5SIM plain-text BAD_KEY, NO_NUMBERS, NO_BALANCE).
+     */
+    public static function markLogError(int $logId, int $providerId, string $errorMessage, ?string $secretToRedact = null): void
+    {
+        $clean = self::redactString($errorMessage, $secretToRedact);
+        try {
+            if ($logId > 0) {
+                Database::execute(
+                    "UPDATE otp_provider_logs SET status = 'error', error_message = ? WHERE id = ?",
+                    [substr($clean, 0, 255), $logId]
+                );
+            }
+            if ($providerId > 0) {
+                Database::execute(
+                    "UPDATE otp_providers SET last_error = ? WHERE id = ?",
+                    [substr($clean, 0, 500), $providerId]
+                );
+            }
+        } catch (Throwable $e) {
+            Logger::errorFile('OtpHttpClient::markLogError error: ' . $e->getMessage());
+        }
+    }
+
+    public static function redactString(string $s, ?string $secretToRedact = null): string
+    {
+        if ($secretToRedact !== null && $secretToRedact !== '') {
+            $s = str_replace($secretToRedact, '[REDACTED]', $s);
+            $encoded = rawurlencode($secretToRedact);
+            if ($encoded !== $secretToRedact) {
+                $s = str_replace($encoded, '[REDACTED]', $s);
+            }
+            $encodedPlus = urlencode($secretToRedact);
+            if ($encodedPlus !== $secretToRedact && $encodedPlus !== $encoded) {
+                $s = str_replace($encodedPlus, '[REDACTED]', $s);
+            }
+        }
+        $s = (string)preg_replace('/(api[_-]?key|apikey|token|secret|password|authorization)=([^&\s"\']+)/i', '$1=[REDACTED]', $s);
+        $s = (string)preg_replace('/("(?:api[_-]?key|apikey|token|secret|password)"\s*:\s*")([^"]+)(")/i', '$1[REDACTED]$3', $s);
+        $s = (string)preg_replace('/(Bearer\s+)([A-Za-z0-9._\-]+)/i', '$1[REDACTED]', $s);
+        return $s;
     }
 
     private static function extractErrorMessage(string $raw, $decoded, int $httpCode): string
@@ -190,41 +254,43 @@ class OtpHttpClient
         string $action,
         string $endpoint,
         int $httpCode,
+        int $responseTimeMs,
         $requestPayload,
         string $responsePayload,
         string $status,
         ?string $errorMessage = null,
         ?string $secretToRedact = null
-    ): void {
+    ): int {
         try {
-            $redact = function (string $s) use ($secretToRedact): string {
-                if ($secretToRedact !== null && $secretToRedact !== '') {
-                    $s = str_replace($secretToRedact, '[REDACTED]', $s);
-                }
-                $s = preg_replace('/(api[_-]?key|token|secret|password|authorization)=([^&\s"]+)/i', '$1=[REDACTED]', $s);
-                return substr($s, 0, 12000);
-            };
             $reqStr = is_array($requestPayload) ? json_encode($requestPayload) : (string)$requestPayload;
-            Database::insert(
-                "INSERT INTO otp_provider_logs (provider_id, activation_id, action, endpoint, http_code, request_payload, response_payload, status, error_message)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            $safeEndpoint = substr(self::redactString($endpoint, $secretToRedact), 0, 255);
+            $safeReq = substr(self::redactString($reqStr, $secretToRedact), 0, 8000);
+            $safeResp = substr(self::redactString($responsePayload, $secretToRedact), 0, 12000);
+            $safeErr = $errorMessage !== null ? substr(self::redactString($errorMessage, $secretToRedact), 0, 255) : null;
+
+            $logId = (int)Database::insert(
+                "INSERT INTO otp_provider_logs (provider_id, activation_id, action, endpoint, http_code, response_time_ms, request_payload, response_payload, status, error_message)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     $providerId > 0 ? $providerId : null,
                     $activationId,
                     substr($action, 0, 60),
-                    substr($redact($endpoint), 0, 255),
+                    $safeEndpoint,
                     $httpCode ?: null,
-                    $redact($reqStr),
-                    $redact($responsePayload),
+                    $responseTimeMs >= 0 ? $responseTimeMs : null,
+                    $safeReq !== '' ? $safeReq : null,
+                    $safeResp,
                     $status === 'ok' ? 'ok' : 'error',
-                    $errorMessage !== null ? substr($redact($errorMessage), 0, 255) : null,
+                    $safeErr,
                 ]
             );
-            if ($providerId > 0 && $status === 'error' && $errorMessage) {
-                Database::execute("UPDATE otp_providers SET last_error = ? WHERE id = ?", [substr($errorMessage, 0, 500), $providerId]);
+            if ($providerId > 0 && $status === 'error' && $safeErr) {
+                Database::execute("UPDATE otp_providers SET last_error = ? WHERE id = ?", [substr($safeErr, 0, 500), $providerId]);
             }
+            return $logId;
         } catch (Throwable $e) {
             Logger::errorFile('OtpHttpClient::logCall error: ' . $e->getMessage());
+            return 0;
         }
     }
 
@@ -257,316 +323,848 @@ class OtpHttpClient
 }
 
 /**
- * Official 5SIM v1 API Adapter
- * Verified endpoints:
- *  - GET /v1/user/profile
- *  - GET /v1/guest/countries
- *  - GET /v1/guest/products/{country}/{operator}
- *  - GET /v1/guest/prices?country={country}&product={product}
- *  - GET /v1/user/buy/activation/{country}/{operator}/{product}
- *  - GET /v1/user/check/{id}
- *  - GET /v1/user/cancel/{id}
- *  - GET /v1/user/finish/{id}
- *  - GET /v1/user/ban/{id}
+ * Standard 5SIM API1 / SMS-Activate Protocol Reference Dictionary
+ * Used ONLY to supply readable display names, ISO codes, flags, and icons for country/service IDs
+ * that are ACTUALLY returned by the live provider getPrices / getNumbersStatus responses.
+ * Never fabricates or injects services or countries not present in live API output.
+ */
+class FiveSimCatalogReference
+{
+    public const COUNTRIES = [
+        '0'   => ['name' => 'Russia',         'iso' => 'RU', 'dial' => '+7',   'flag' => '🇷🇺'],
+        '1'   => ['name' => 'Ukraine',        'iso' => 'UA', 'dial' => '+380', 'flag' => '🇺🇦'],
+        '2'   => ['name' => 'Kazakhstan',     'iso' => 'KZ', 'dial' => '+7',   'flag' => '🇰🇿'],
+        '3'   => ['name' => 'China',          'iso' => 'CN', 'dial' => '+86',  'flag' => '🇨🇳'],
+        '4'   => ['name' => 'Philippines',    'iso' => 'PH', 'dial' => '+63',  'flag' => '🇵🇭'],
+        '5'   => ['name' => 'Myanmar',        'iso' => 'MM', 'dial' => '+95',  'flag' => '🇲🇲'],
+        '6'   => ['name' => 'Indonesia',      'iso' => 'ID', 'dial' => '+62',  'flag' => '🇮🇩'],
+        '7'   => ['name' => 'Malaysia',       'iso' => 'MY', 'dial' => '+60',  'flag' => '🇲🇾'],
+        '8'   => ['name' => 'Kenya',          'iso' => 'KE', 'dial' => '+254', 'flag' => '🇰🇪'],
+        '9'   => ['name' => 'Tanzania',       'iso' => 'TZ', 'dial' => '+255', 'flag' => '🇹🇿'],
+        '10'  => ['name' => 'Vietnam',        'iso' => 'VN', 'dial' => '+84',  'flag' => '🇻🇳'],
+        '11'  => ['name' => 'Kyrgyzstan',     'iso' => 'KG', 'dial' => '+996', 'flag' => '🇰🇬'],
+        '12'  => ['name' => 'USA (Virtual)',  'iso' => 'USV','dial' => '+1',   'flag' => '🇺🇸'],
+        '13'  => ['name' => 'Israel',         'iso' => 'IL', 'dial' => '+972', 'flag' => '🇮🇱'],
+        '14'  => ['name' => 'Hong Kong',      'iso' => 'HK', 'dial' => '+852', 'flag' => '🇭🇰'],
+        '15'  => ['name' => 'Poland',         'iso' => 'PL', 'dial' => '+48',  'flag' => '🇵🇱'],
+        '16'  => ['name' => 'United Kingdom', 'iso' => 'GB', 'dial' => '+44',  'flag' => '🇬🇧'],
+        '19'  => ['name' => 'Nigeria',        'iso' => 'NG', 'dial' => '+234', 'flag' => '🇳🇬'],
+        '21'  => ['name' => 'Egypt',          'iso' => 'EG', 'dial' => '+20',  'flag' => '🇪🇬'],
+        '22'  => ['name' => 'India',          'iso' => 'IN', 'dial' => '+91',  'flag' => '🇮🇳'],
+        '23'  => ['name' => 'Ireland',        'iso' => 'IE', 'dial' => '+353', 'flag' => '🇮🇪'],
+        '24'  => ['name' => 'Cambodia',       'iso' => 'KH', 'dial' => '+855', 'flag' => '🇰🇭'],
+        '31'  => ['name' => 'South Africa',   'iso' => 'ZA', 'dial' => '+27',  'flag' => '🇿🇦'],
+        '32'  => ['name' => 'Romania',        'iso' => 'RO', 'dial' => '+40',  'flag' => '🇷🇴'],
+        '33'  => ['name' => 'Colombia',       'iso' => 'CO', 'dial' => '+57',  'flag' => '🇨🇴'],
+        '34'  => ['name' => 'Estonia',        'iso' => 'EE', 'dial' => '+372', 'flag' => '🇪🇪'],
+        '36'  => ['name' => 'Canada',         'iso' => 'CA', 'dial' => '+1',   'flag' => '🇨🇦'],
+        '37'  => ['name' => 'Morocco',        'iso' => 'MA', 'dial' => '+212', 'flag' => '🇲🇦'],
+        '39'  => ['name' => 'Argentina',      'iso' => 'AR', 'dial' => '+54',  'flag' => '🇦🇷'],
+        '40'  => ['name' => 'Uzbekistan',     'iso' => 'UZ', 'dial' => '+998', 'flag' => '🇺🇿'],
+        '43'  => ['name' => 'Germany',        'iso' => 'DE', 'dial' => '+49',  'flag' => '🇩🇪'],
+        '44'  => ['name' => 'Lithuania',      'iso' => 'LT', 'dial' => '+370', 'flag' => '🇱🇹'],
+        '46'  => ['name' => 'Sweden',         'iso' => 'SE', 'dial' => '+46',  'flag' => '🇸🇪'],
+        '48'  => ['name' => 'Netherlands',    'iso' => 'NL', 'dial' => '+31',  'flag' => '🇳🇱'],
+        '49'  => ['name' => 'Latvia',         'iso' => 'LV', 'dial' => '+371', 'flag' => '🇱🇻'],
+        '50'  => ['name' => 'Austria',        'iso' => 'AT', 'dial' => '+43',  'flag' => '🇦🇹'],
+        '52'  => ['name' => 'Thailand',       'iso' => 'TH', 'dial' => '+66',  'flag' => '🇹🇭'],
+        '53'  => ['name' => 'Saudi Arabia',   'iso' => 'SA', 'dial' => '+966', 'flag' => '🇸🇦'],
+        '54'  => ['name' => 'Mexico',         'iso' => 'MX', 'dial' => '+52',  'flag' => '🇲🇽'],
+        '55'  => ['name' => 'Taiwan',         'iso' => 'TW', 'dial' => '+886', 'flag' => '🇹🇼'],
+        '56'  => ['name' => 'Spain',          'iso' => 'ES', 'dial' => '+34',  'flag' => '🇪🇸'],
+        '58'  => ['name' => 'Algeria',        'iso' => 'DZ', 'dial' => '+213', 'flag' => '🇩🇿'],
+        '60'  => ['name' => 'Bangladesh',     'iso' => 'BD', 'dial' => '+880', 'flag' => '🇧🇩'],
+        '62'  => ['name' => 'Turkey',         'iso' => 'TR', 'dial' => '+90',  'flag' => '🇹🇷'],
+        '63'  => ['name' => 'Czech Republic', 'iso' => 'CZ', 'dial' => '+420', 'flag' => '🇨🇿'],
+        '64'  => ['name' => 'Sri Lanka',      'iso' => 'LK', 'dial' => '+94',  'flag' => '🇱🇰'],
+        '65'  => ['name' => 'Peru',           'iso' => 'PE', 'dial' => '+51',  'flag' => '🇵🇪'],
+        '66'  => ['name' => 'Pakistan',       'iso' => 'PK', 'dial' => '+92',  'flag' => '🇵🇰'],
+        '67'  => ['name' => 'New Zealand',    'iso' => 'NZ', 'dial' => '+64',  'flag' => '🇳🇿'],
+        '73'  => ['name' => 'Brazil',         'iso' => 'BR', 'dial' => '+55',  'flag' => '🇧🇷'],
+        '78'  => ['name' => 'France',         'iso' => 'FR', 'dial' => '+33',  'flag' => '🇫🇷'],
+        '82'  => ['name' => 'Belgium',        'iso' => 'BE', 'dial' => '+32',  'flag' => '🇧🇪'],
+        '83'  => ['name' => 'Bulgaria',       'iso' => 'BG', 'dial' => '+359', 'flag' => '🇧🇬'],
+        '84'  => ['name' => 'Hungary',        'iso' => 'HU', 'dial' => '+36',  'flag' => '🇭🇺'],
+        '86'  => ['name' => 'Italy',          'iso' => 'IT', 'dial' => '+39',  'flag' => '🇮🇹'],
+        '95'  => ['name' => 'UAE',            'iso' => 'AE', 'dial' => '+971', 'flag' => '🇦🇪'],
+        '117' => ['name' => 'Portugal',       'iso' => 'PT', 'dial' => '+351', 'flag' => '🇵🇹'],
+        '129' => ['name' => 'Greece',         'iso' => 'GR', 'dial' => '+30',  'flag' => '🇬🇷'],
+        '151' => ['name' => 'Chile',          'iso' => 'CL', 'dial' => '+56',  'flag' => '🇨🇱'],
+        '172' => ['name' => 'Denmark',        'iso' => 'DK', 'dial' => '+45',  'flag' => '🇩🇰'],
+        '173' => ['name' => 'Switzerland',    'iso' => 'CH', 'dial' => '+41',  'flag' => '🇨🇭'],
+        '174' => ['name' => 'Norway',         'iso' => 'NO', 'dial' => '+47',  'flag' => '🇳🇴'],
+        '175' => ['name' => 'Australia',      'iso' => 'AU', 'dial' => '+61',  'flag' => '🇦🇺'],
+        '182' => ['name' => 'Japan',          'iso' => 'JP', 'dial' => '+81',  'flag' => '🇯🇵'],
+        '187' => ['name' => 'United States',  'iso' => 'US', 'dial' => '+1',   'flag' => '🇺🇸'],
+        '190' => ['name' => 'South Korea',    'iso' => 'KR', 'dial' => '+82',  'flag' => '🇰🇷'],
+        '196' => ['name' => 'Singapore',      'iso' => 'SG', 'dial' => '+65',  'flag' => '🇸🇬'],
+        // Also support slug country identifiers if returned by API
+        'russia'      => ['name' => 'Russia',         'iso' => 'RU', 'dial' => '+7',   'flag' => '🇷🇺'],
+        'india'       => ['name' => 'India',          'iso' => 'IN', 'dial' => '+91',  'flag' => '🇮🇳'],
+        'usa'         => ['name' => 'United States',  'iso' => 'US', 'dial' => '+1',   'flag' => '🇺🇸'],
+        'england'     => ['name' => 'United Kingdom', 'iso' => 'GB', 'dial' => '+44',  'flag' => '🇬🇧'],
+        'uk'          => ['name' => 'United Kingdom', 'iso' => 'GB', 'dial' => '+44',  'flag' => '🇬🇧'],
+        'indonesia'   => ['name' => 'Indonesia',      'iso' => 'ID', 'dial' => '+62',  'flag' => '🇮🇩'],
+        'philippines' => ['name' => 'Philippines',    'iso' => 'PH', 'dial' => '+63',  'flag' => '🇵🇭'],
+        'vietnam'     => ['name' => 'Vietnam',        'iso' => 'VN', 'dial' => '+84',  'flag' => '🇻🇳'],
+        'germany'     => ['name' => 'Germany',        'iso' => 'DE', 'dial' => '+49',  'flag' => '🇩🇪'],
+        'france'      => ['name' => 'France',         'iso' => 'FR', 'dial' => '+33',  'flag' => '🇫🇷'],
+        'brazil'      => ['name' => 'Brazil',         'iso' => 'BR', 'dial' => '+55',  'flag' => '🇧🇷'],
+        'canada'      => ['name' => 'Canada',         'iso' => 'CA', 'dial' => '+1',   'flag' => '🇨🇦'],
+        'netherlands' => ['name' => 'Netherlands',    'iso' => 'NL', 'dial' => '+31',  'flag' => '🇳🇱'],
+        'poland'      => ['name' => 'Poland',         'iso' => 'PL', 'dial' => '+48',  'flag' => '🇵🇱'],
+        'turkey'      => ['name' => 'Turkey',         'iso' => 'TR', 'dial' => '+90',  'flag' => '🇹🇷'],
+    ];
+
+    public const SERVICES = [
+        'wa'        => ['name' => 'WhatsApp',          'icon' => 'whatsapp',  'popular' => 1],
+        'whatsapp'  => ['name' => 'WhatsApp',          'icon' => 'whatsapp',  'popular' => 1],
+        'tg'        => ['name' => 'Telegram',          'icon' => 'telegram',  'popular' => 1],
+        'telegram'  => ['name' => 'Telegram',          'icon' => 'telegram',  'popular' => 1],
+        'ig'        => ['name' => 'Instagram',         'icon' => 'instagram', 'popular' => 1],
+        'instagram' => ['name' => 'Instagram',         'icon' => 'instagram', 'popular' => 1],
+        'go'        => ['name' => 'Google / YouTube',  'icon' => 'google',    'popular' => 1],
+        'google'    => ['name' => 'Google / YouTube',  'icon' => 'google',    'popular' => 1],
+        'fb'        => ['name' => 'Facebook',          'icon' => 'facebook',  'popular' => 1],
+        'facebook'  => ['name' => 'Facebook',          'icon' => 'facebook',  'popular' => 1],
+        'tw'        => ['name' => 'Twitter / X',       'icon' => 'twitter',   'popular' => 1],
+        'twitter'   => ['name' => 'Twitter / X',       'icon' => 'twitter',   'popular' => 1],
+        'lf'        => ['name' => 'TikTok',            'icon' => 'tiktok',    'popular' => 1],
+        'tiktok'    => ['name' => 'TikTok',            'icon' => 'tiktok',    'popular' => 1],
+        'ds'        => ['name' => 'Discord',           'icon' => 'discord',   'popular' => 1],
+        'discord'   => ['name' => 'Discord',           'icon' => 'discord',   'popular' => 1],
+        'am'        => ['name' => 'Amazon',            'icon' => 'amazon',    'popular' => 1],
+        'amazon'    => ['name' => 'Amazon',            'icon' => 'amazon',    'popular' => 1],
+        'wx'        => ['name' => 'Apple',             'icon' => 'apple',     'popular' => 0],
+        'apple'     => ['name' => 'Apple',             'icon' => 'apple',     'popular' => 0],
+        'mm'        => ['name' => 'Microsoft',         'icon' => 'microsoft', 'popular' => 0],
+        'microsoft' => ['name' => 'Microsoft',         'icon' => 'microsoft', 'popular' => 0],
+        'ub'        => ['name' => 'Uber',              'icon' => 'uber',      'popular' => 0],
+        'uber'      => ['name' => 'Uber',              'icon' => 'uber',      'popular' => 0],
+        'fu'        => ['name' => 'Snapchat',          'icon' => 'snapchat',  'popular' => 0],
+        'snapchat'  => ['name' => 'Snapchat',          'icon' => 'snapchat',  'popular' => 0],
+        'vi'        => ['name' => 'Viber',             'icon' => 'general',   'popular' => 0],
+        'oi'        => ['name' => 'Tinder',            'icon' => 'general',   'popular' => 0],
+        'mb'        => ['name' => 'Yahoo',             'icon' => 'general',   'popular' => 0],
+        'vk'        => ['name' => 'VKontakte',         'icon' => 'general',   'popular' => 0],
+        'ok'        => ['name' => 'Odnoklassniki',     'icon' => 'general',   'popular' => 0],
+        'ya'        => ['name' => 'Yandex',            'icon' => 'general',   'popular' => 0],
+        'dr'        => ['name' => 'OpenAI / ChatGPT',  'icon' => 'general',   'popular' => 1],
+        'openai'    => ['name' => 'OpenAI / ChatGPT',  'icon' => 'general',   'popular' => 1],
+        'tn'        => ['name' => 'LinkedIn',          'icon' => 'general',   'popular' => 0],
+        'nf'        => ['name' => 'Netflix',           'icon' => 'general',   'popular' => 0],
+        'pp'        => ['name' => 'PayPal',            'icon' => 'general',   'popular' => 0],
+        'ka'        => ['name' => 'Shopee',            'icon' => 'general',   'popular' => 0],
+        'hw'        => ['name' => 'Alipay',            'icon' => 'general',   'popular' => 0],
+        'me'        => ['name' => 'Line Messenger',    'icon' => 'general',   'popular' => 0],
+        'ot'        => ['name' => 'Other / Any App',   'icon' => 'general',   'popular' => 0],
+    ];
+
+    public static function describeCountry(string $providerCountryCode): array
+    {
+        $key = strtolower(trim($providerCountryCode));
+        if (isset(self::COUNTRIES[$key])) {
+            $info = self::COUNTRIES[$key];
+            return [
+                'provider_code' => $providerCountryCode,
+                'name'          => $info['name'],
+                'iso_code'      => $info['iso'],
+                'dial_code'     => $info['dial'],
+                'flag_emoji'    => $info['flag'],
+            ];
+        }
+        $cleanIso = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $providerCountryCode));
+        if ($cleanIso === '') {
+            $cleanIso = 'UNK';
+        }
+        $iso = ctype_digit($cleanIso) ? ('C' . substr($cleanIso, 0, 9)) : substr($cleanIso, 0, 10);
+        return [
+            'provider_code' => $providerCountryCode,
+            'name'          => ctype_digit($providerCountryCode) ? ('Country #' . $providerCountryCode) : ucwords(str_replace(['_', '-'], ' ', $providerCountryCode)),
+            'iso_code'      => $iso,
+            'dial_code'     => '',
+            'flag_emoji'    => '🌐',
+        ];
+    }
+
+    public static function describeService(string $providerServiceCode): array
+    {
+        $key = strtolower(trim($providerServiceCode));
+        if (isset(self::SERVICES[$key])) {
+            $info = self::SERVICES[$key];
+            return [
+                'provider_code' => $providerServiceCode,
+                'name'          => $info['name'],
+                'slug'          => self::makeSlug($info['name'], $providerServiceCode),
+                'icon_key'      => $info['icon'],
+                'is_popular'    => (int)$info['popular'],
+            ];
+        }
+        $label = ucwords(str_replace(['_', '-'], ' ', $providerServiceCode));
+        return [
+            'provider_code' => $providerServiceCode,
+            'name'          => strlen($providerServiceCode) <= 3 ? ('Service ' . strtoupper($providerServiceCode)) : $label,
+            'slug'          => self::makeSlug($providerServiceCode, $providerServiceCode),
+            'icon_key'      => 'general',
+            'is_popular'    => 0,
+        ];
+    }
+
+    public static function makeSlug(string $name, string $fallbackCode): string
+    {
+        $s = strtolower(preg_replace('/[^a-z0-9]+/i', '_', trim($name)));
+        $s = trim($s, '_');
+        if ($s === '') {
+            $s = 'svc_' . strtolower(preg_replace('/[^a-z0-9]+/i', '', $fallbackCode));
+        }
+        return substr($s, 0, 90);
+    }
+}
+
+/**
+ * Built-in 5SIM API1 Adapter
+ * Exact Base URL: http://api1.5sim.net/stubs/handler_api.php
+ * Exact Supported Actions (GET / POST, Plain-Text + JSON parsing):
+ *  - getBalance:       ?action=getBalance&api_key=API_KEY                      -> ACCESS_BALANCE:<amount>
+ *  - getNumbersStatus: ?action=getNumbersStatus&api_key=API_KEY&country=COUNTRY -> JSON {"wa_0": 150, ...}
+ *  - getNumber:        ?action=getNumber&api_key=API_KEY&service=S&operator=O&country=C -> ACCESS_NUMBER:<id>:<phone>
+ *  - setStatus:        ?action=setStatus&api_key=API_KEY&status=STATUS&id=ID    -> ACCESS_READY / ACCESS_RETRY_GET / ACCESS_ACTIVATION / ACCESS_CANCEL
+ *  - getStatus:        ?action=getStatus&api_key=API_KEY&id=ID                  -> STATUS_WAIT_CODE / STATUS_WAIT_RETRY:... / STATUS_CANCEL / STATUS_OK:<code>
+ *  - getPrices:        ?action=getPrices&api_key=API_KEY[&country=C][&service=S] -> JSON {"<country>":{"<service>":{"cost":...,"count":...}}}
  */
 class FiveSimAdapter implements OtpProviderInterface
 {
+    public const DEFAULT_BASE_URL = 'http://api1.5sim.net/stubs/handler_api.php';
+
     private array $provider;
     private string $baseUrl;
     private string $apiKey;
+    private string $requestMethod;
 
     public function __construct(array $provider)
     {
         $this->provider = $provider;
-        $this->baseUrl = rtrim((string)($provider['base_url'] ?: 'https://5sim.net'), '/');
+        $rawUrl = trim((string)($provider['base_url'] ?? ''));
+        $this->baseUrl = $rawUrl !== '' ? $rawUrl : self::DEFAULT_BASE_URL;
         $this->apiKey = Helpers::decryptSecret((string)($provider['api_key_enc'] ?? ''));
+        $this->requestMethod = strtoupper((string)($provider['request_method'] ?? 'GET')) === 'POST' ? 'POST' : 'GET';
     }
 
-    private function authHeaders(): array
+    /**
+     * Dispatch a server-side request to the configured 5SIM handler_api.php URL.
+     */
+    private function callHandler(string $action, array $params = [], ?int $activationId = null): array
     {
-        $h = ['Accept: application/json'];
-        if ($this->apiKey !== '') {
-            $h[] = 'Authorization: Bearer ' . $this->apiKey;
+        if ($this->apiKey === '') {
+            return [
+                'ok'        => false,
+                'uncertain' => false,
+                'http_code' => 0,
+                'log_id'    => 0,
+                'error'     => '5SIM API key is not configured.',
+                'raw'       => '',
+                'data'      => null,
+            ];
         }
-        return $h;
+
+        $query = array_merge(['action' => $action, 'api_key' => $this->apiKey], $params);
+
+        if ($this->requestMethod === 'POST') {
+            return OtpHttpClient::request(
+                $this->provider,
+                $action,
+                'POST',
+                $this->baseUrl,
+                ['Accept: application/json, text/plain, */*'],
+                $query,
+                $activationId,
+                $this->apiKey
+            );
+        }
+
+        $sep = str_contains($this->baseUrl, '?') ? '&' : '?';
+        $url = $this->baseUrl . $sep . http_build_query($query);
+        return OtpHttpClient::request(
+            $this->provider,
+            $action,
+            'GET',
+            $url,
+            ['Accept: application/json, text/plain, */*'],
+            null,
+            $activationId,
+            $this->apiKey
+        );
     }
 
+    /**
+     * Map well-known 5SIM handler_api.php plain-text error tokens to clear messages.
+     */
+    private function detectPlainTextError(string $raw): ?string
+    {
+        $txt = trim($raw);
+        if ($txt === '') {
+            return '5SIM API returned an empty response.';
+        }
+        // Reject HTML error pages (e.g. Cloudflare / 502 / wrong URL)
+        if (str_starts_with(strtolower($txt), '<!doctype') || str_starts_with(strtolower($txt), '<html')) {
+            return '5SIM API returned HTML instead of an API response. Verify the endpoint URL.';
+        }
+        $upper = strtoupper($txt);
+        if (str_starts_with($upper, 'BANNED:')) {
+            return 'Account temporarily restricted by 5SIM: ' . $txt;
+        }
+        $known = [
+            'BAD_KEY'             => 'Invalid 5SIM API key (BAD_KEY).',
+            'BAD_ACTION'          => 'Invalid API action parameter (BAD_ACTION).',
+            'BAD_SERVICE'         => 'Invalid or unsupported service identifier (BAD_SERVICE).',
+            'BAD_STATUS'          => 'Invalid activation status code (BAD_STATUS).',
+            'BAD_COUNTRY'         => 'Invalid or unsupported country identifier (BAD_COUNTRY).',
+            'WRONG_OPERATOR'      => 'Invalid operator identifier (WRONG_OPERATOR).',
+            'NO_KEY'              => 'API key parameter missing (NO_KEY).',
+            'NO_BALANCE'          => 'Insufficient balance on 5SIM account (NO_BALANCE).',
+            'NO_NUMBERS'          => 'No numbers currently available for this service and country (NO_NUMBERS).',
+            'NO_ACTIVATION'       => 'Activation ID not found on 5SIM (NO_ACTIVATION).',
+            'ERROR_SQL'           => 'Upstream 5SIM database error (ERROR_SQL).',
+            'EARLY_CANCEL_DENIED' => 'Cancellation is not allowed yet (EARLY_CANCEL_DENIED).',
+            'WRONG_EXCEPTION_PHONE' => 'Unsupported phone prefix exclusion (WRONG_EXCEPTION_PHONE).',
+            'NO_BALANCE_FORWARD'  => 'Insufficient balance for call forwarding (NO_BALANCE_FORWARD).',
+        ];
+        if (isset($known[$upper])) {
+            return $known[$upper];
+        }
+        if (str_starts_with($upper, 'ERROR') || str_starts_with($upper, 'BAD_') || str_starts_with($upper, 'WRONG_')) {
+            return '5SIM API error: ' . $txt;
+        }
+        return null;
+    }
+
+    private function failWithLog(array $res, string $error): array
+    {
+        OtpHttpClient::markLogError((int)($res['log_id'] ?? 0), (int)($this->provider['id'] ?? 0), $error, $this->apiKey);
+        return [
+            'ok'               => false,
+            'uncertain'        => !empty($res['uncertain']),
+            'http_code'        => (int)($res['http_code'] ?? 0),
+            'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+            'error'            => $error,
+            'raw'              => (string)($res['raw'] ?? ''),
+        ];
+    }
+
+    /**
+     * Real connection test: invokes getBalance and strictly requires ACCESS_BALANCE:<numeric>.
+     */
     public function testConnection(): array
     {
         return $this->getBalance();
     }
 
+    /**
+     * A. Balance Check: ?action=getBalance&api_key=API_KEY -> ACCESS_BALANCE:<amount>
+     */
     public function getBalance(): array
     {
-        if ($this->apiKey === '') {
-            return ['ok' => false, 'error' => '5SIM API token is not configured.'];
+        $res = $this->callHandler('getBalance');
+        if (!$res['ok']) {
+            return [
+                'ok'               => false,
+                'http_code'        => (int)($res['http_code'] ?? 0),
+                'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                'error'            => $res['error'] ?: 'Unable to connect to 5SIM getBalance.',
+                'raw'              => (string)($res['raw'] ?? ''),
+            ];
         }
-        $res = OtpHttpClient::request(
-            $this->provider,
-            'balance',
-            'GET',
-            $this->baseUrl . '/v1/user/profile',
-            $this->authHeaders(),
-            null,
-            null,
-            $this->apiKey
-        );
-        if (!$res['ok'] || !is_array($res['data'])) {
-            return ['ok' => false, 'error' => $res['error'] ?: 'Invalid profile response from 5SIM.'];
+
+        $raw = trim((string)$res['raw']);
+        if (preg_match('/^ACCESS_BALANCE:([+-]?\d+(?:\.\d+)?)$/i', $raw, $m)) {
+            return [
+                'ok'               => true,
+                'balance'          => Currency::normalize($m[1], 4),
+                'currency'         => (string)($this->provider['currency_code'] ?: 'RUB'),
+                'http_code'        => (int)$res['http_code'],
+                'response_time_ms' => (int)$res['response_time_ms'],
+                'raw'              => $raw,
+            ];
         }
-        $bal = isset($res['data']['balance']) ? (string)$res['data']['balance'] : null;
-        if ($bal === null) {
-            return ['ok' => false, 'error' => '5SIM profile response did not contain a balance field.'];
+
+        $plainErr = $this->detectPlainTextError($raw)
+            ?? ('Unexpected getBalance response from 5SIM: ' . substr(strip_tags($raw), 0, 120));
+        return $this->failWithLog($res, $plainErr);
+    }
+
+    /**
+     * B. Available Numbers Status: ?action=getNumbersStatus&api_key=API_KEY&country=COUNTRY[&operator=OPERATOR]
+     * Response: JSON {"wa_0":"150","tg_0":84,...}
+     */
+    public function getNumbersStatus(?string $countryCode = null, ?string $operator = null): array
+    {
+        $params = [];
+        if ($countryCode !== null && trim($countryCode) !== '') {
+            $params['country'] = trim($countryCode);
         }
+        if ($operator !== null && trim($operator) !== '' && strtolower(trim($operator)) !== 'any') {
+            $params['operator'] = trim($operator);
+        }
+
+        $res = $this->callHandler('getNumbersStatus', $params);
+        if (!$res['ok']) {
+            return [
+                'ok'               => false,
+                'http_code'        => (int)($res['http_code'] ?? 0),
+                'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                'error'            => $res['error'] ?: 'Unable to fetch numbers availability from 5SIM.',
+                'counts'           => [],
+            ];
+        }
+
+        $raw = trim((string)$res['raw']);
+        if (!is_array($res['data'])) {
+            $plainErr = $this->detectPlainTextError($raw)
+                ?? ('Unexpected getNumbersStatus response (expected JSON map): ' . substr(strip_tags($raw), 0, 120));
+            return array_merge($this->failWithLog($res, $plainErr), ['counts' => []]);
+        }
+
+        $counts = [];
+        foreach ($res['data'] as $rawKey => $rawVal) {
+            if (!is_scalar($rawVal)) {
+                continue;
+            }
+            $keyStr = (string)$rawKey;
+            $cnt = max(0, (int)$rawVal);
+            // Strip standard _0 (no forwarding) or _1 (with forwarding) suffixes
+            $baseSvc = preg_replace('/_[01]$/', '', $keyStr);
+            if ($baseSvc === null || $baseSvc === '') {
+                $baseSvc = $keyStr;
+            }
+            // Prefer standard _0 count when both _0 and _1 appear
+            if (str_ends_with($keyStr, '_0') || !isset($counts[$baseSvc])) {
+                $counts[$baseSvc] = $cnt;
+            }
+        }
+
         return [
-            'ok'       => true,
-            'balance'  => Currency::normalize($bal, 4),
-            'currency' => (string)($this->provider['currency_code'] ?: 'RUB'),
-            'email'    => (string)($res['data']['email'] ?? ''),
-            'rating'   => $res['data']['rating'] ?? null,
-            'raw'      => $res['data'],
+            'ok'               => true,
+            'country'          => $countryCode,
+            'counts'           => $counts,
+            'http_code'        => (int)$res['http_code'],
+            'response_time_ms' => (int)$res['response_time_ms'],
+            'raw'              => $res['data'],
         ];
     }
 
-    public function getCountries(): array
+    /**
+     * F. Get Prices: ?action=getPrices&api_key=API_KEY[&country=COUNTRY][&service=SERVICE]
+     * Parses actual nested JSON returned by the API without fabricating countries or services.
+     * Supports:
+     *  - All countries/services: { "<country_id>": { "<service_code>": { "cost": 15, "count": 100 } } }
+     *  - Operator-nested variants: { "<country_id>": { "<service_code>": { "<operator>": { "cost": 15, "count": 100 } } } }
+     *  - Country-only filtered responses where top-level is country or service map.
+     */
+    public function getPrices(?string $countryCode = null, ?string $serviceCode = null): array
     {
-        $res = OtpHttpClient::request(
-            $this->provider,
-            'countries',
-            'GET',
-            $this->baseUrl . '/v1/guest/countries',
-            ['Accept: application/json']
-        );
-        if (!$res['ok'] || !is_array($res['data'])) {
-            return ['ok' => false, 'error' => $res['error'] ?: 'Could not fetch countries from 5SIM.'];
+        $params = [];
+        if ($countryCode !== null && trim($countryCode) !== '') {
+            $params['country'] = trim($countryCode);
         }
-        $list = [];
-        foreach ($res['data'] as $code => $info) {
-            $iso = '';
-            if (!empty($info['iso']) && is_array($info['iso'])) {
-                $iso = strtoupper((string)array_key_first($info['iso']));
-            }
-            $dial = '';
-            if (!empty($info['prefix']) && is_array($info['prefix'])) {
-                $dial = (string)array_key_first($info['prefix']);
-            }
-            $list[] = [
-                'provider_code' => (string)$code,
-                'name'          => (string)($info['text_en'] ?? ucfirst((string)$code)),
-                'iso_code'      => $iso,
-                'dial_code'     => $dial,
+        if ($serviceCode !== null && trim($serviceCode) !== '') {
+            $params['service'] = trim($serviceCode);
+        }
+
+        $res = $this->callHandler('getPrices', $params);
+        if (!$res['ok']) {
+            return [
+                'ok'               => false,
+                'http_code'        => (int)($res['http_code'] ?? 0),
+                'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                'error'            => $res['error'] ?: 'Unable to fetch prices from 5SIM.',
+                'items'            => [],
+                'countries'        => [],
             ];
         }
-        return ['ok' => true, 'countries' => $list];
-    }
 
-    public function getAvailabilityAndPrice(string $countryCode, string $serviceCode, string $operator = 'any'): array
-    {
-        $c = strtolower(trim($countryCode));
-        $p = strtolower(trim($serviceCode));
-        $url = $this->baseUrl . '/v1/guest/prices?country=' . rawurlencode($c) . '&product=' . rawurlencode($p);
-        $res = OtpHttpClient::request($this->provider, 'pricing', 'GET', $url, ['Accept: application/json']);
-        if (!$res['ok'] || !is_array($res['data'])) {
-            return ['ok' => false, 'available' => false, 'count' => 0, 'cost' => null, 'error' => $res['error'] ?: 'Unable to fetch 5SIM pricing.'];
+        $raw = trim((string)$res['raw']);
+        if (!is_array($res['data'])) {
+            $plainErr = $this->detectPlainTextError($raw)
+                ?? ('Unexpected getPrices response (expected JSON): ' . substr(strip_tags($raw), 0, 120));
+            return array_merge($this->failWithLog($res, $plainErr), ['items' => [], 'countries' => []]);
         }
 
-        // 5SIM /v1/guest/prices returns { "{country}": { "{product}": { "{operator}": { "cost": 12.5, "count": 45, "rate": 98.1 } } } }
-        $operators = $res['data'][$c][$p] ?? null;
-        if (!is_array($operators) || empty($operators)) {
-            return ['ok' => true, 'available' => false, 'count' => 0, 'cost' => null, 'operator' => $operator, 'currency' => 'RUB'];
-        }
+        $data = $res['data'];
+        $currency = (string)($this->provider['currency_code'] ?: 'RUB');
+        $items = [];
+        $countriesMap = [];
 
-        $bestOp = $operator;
-        $bestCost = null;
-        $totalCount = 0;
-
-        if ($operator !== '' && $operator !== 'any' && isset($operators[$operator]) && is_array($operators[$operator])) {
-            $info = $operators[$operator];
-            $totalCount = (int)($info['count'] ?? 0);
-            $bestCost = isset($info['cost']) ? (string)$info['cost'] : null;
-        } else {
-            foreach ($operators as $opName => $info) {
-                if (!is_array($info)) continue;
-                $cnt = (int)($info['count'] ?? 0);
-                $cost = isset($info['cost']) ? (float)$info['cost'] : null;
-                if ($cnt > 0) {
-                    $totalCount += $cnt;
-                    if ($cost !== null && ($bestCost === null || $cost < (float)$bestCost)) {
-                        $bestCost = (string)$cost;
-                        $bestOp = (string)$opName;
+        // Helper to normalize a price leaf node
+        $extractCostCount = static function ($node): ?array {
+            if (!is_array($node)) {
+                return null;
+            }
+            if (array_key_exists('cost', $node) || array_key_exists('price', $node)) {
+                $c = $node['cost'] ?? $node['price'] ?? null;
+                $cnt = isset($node['count']) ? max(0, (int)$node['count']) : (isset($node['quantity']) ? max(0, (int)$node['quantity']) : null);
+                if ($c !== null && is_numeric((string)$c)) {
+                    return ['cost' => Currency::normalize((string)$c, 4), 'count' => $cnt, 'operator' => 'any'];
+                }
+            }
+            // Check if node is a map of operators -> {cost, count}
+            $bestCost = null;
+            $bestOp = 'any';
+            $totalCnt = 0;
+            $foundAny = false;
+            foreach ($node as $opKey => $opVal) {
+                if (!is_array($opVal)) {
+                    continue;
+                }
+                if (array_key_exists('cost', $opVal) || array_key_exists('price', $opVal)) {
+                    $c = $opVal['cost'] ?? $opVal['price'] ?? null;
+                    $cnt = max(0, (int)($opVal['count'] ?? 0));
+                    if ($c !== null && is_numeric((string)$c)) {
+                        $foundAny = true;
+                        $totalCnt += $cnt;
+                        if ($bestCost === null || ($cnt > 0 && (float)$c < (float)$bestCost)) {
+                            $bestCost = Currency::normalize((string)$c, 4);
+                            $bestOp = (string)$opKey;
+                        }
                     }
                 }
+            }
+            if ($foundAny && $bestCost !== null) {
+                return ['cost' => $bestCost, 'count' => $totalCnt, 'operator' => $bestOp];
+            }
+            return null;
+        };
+
+        foreach ($data as $topKey => $topVal) {
+            if (!is_array($topVal)) {
+                continue;
+            }
+            // Case 1: Standard nested map: topKey = countryCode, secondKey = serviceCode
+            $directLeaf = $extractCostCount($topVal);
+            if ($directLeaf !== null && $countryCode !== null && $countryCode !== '') {
+                // Provider returned { "<service>": { "cost": ..., "count": ... } } for a single country query
+                $cCode = (string)$countryCode;
+                $sCode = (string)$topKey;
+                $cInfo = FiveSimCatalogReference::describeCountry($cCode);
+                $sInfo = FiveSimCatalogReference::describeService($sCode);
+                $countriesMap[$cCode] = $cInfo;
+                $items[] = [
+                    'country_code' => $cCode,
+                    'country_name' => $cInfo['name'],
+                    'country_iso'  => $cInfo['iso_code'],
+                    'country_dial' => $cInfo['dial_code'],
+                    'country_flag' => $cInfo['flag_emoji'],
+                    'service_code' => $sCode,
+                    'service_name' => $sInfo['name'],
+                    'service_slug' => $sInfo['slug'],
+                    'icon_key'     => $sInfo['icon_key'],
+                    'is_popular'   => $sInfo['is_popular'],
+                    'operator'     => $directLeaf['operator'],
+                    'cost'         => $directLeaf['cost'],
+                    'count'        => $directLeaf['count'],
+                    'currency'     => $currency,
+                ];
+                continue;
+            }
+
+            $cCode = (string)$topKey;
+            $cInfo = FiveSimCatalogReference::describeCountry($cCode);
+            foreach ($topVal as $svcKey => $svcVal) {
+                $leaf = $extractCostCount($svcVal);
+                if ($leaf === null) {
+                    continue;
+                }
+                $sCode = (string)$svcKey;
+                $sInfo = FiveSimCatalogReference::describeService($sCode);
+                $countriesMap[$cCode] = $cInfo;
+                $items[] = [
+                    'country_code' => $cCode,
+                    'country_name' => $cInfo['name'],
+                    'country_iso'  => $cInfo['iso_code'],
+                    'country_dial' => $cInfo['dial_code'],
+                    'country_flag' => $cInfo['flag_emoji'],
+                    'service_code' => $sCode,
+                    'service_name' => $sInfo['name'],
+                    'service_slug' => $sInfo['slug'],
+                    'icon_key'     => $sInfo['icon_key'],
+                    'is_popular'   => $sInfo['is_popular'],
+                    'operator'     => $leaf['operator'],
+                    'cost'         => $leaf['cost'],
+                    'count'        => $leaf['count'],
+                    'currency'     => $currency,
+                ];
+            }
+        }
+
+        return [
+            'ok'               => true,
+            'items'            => $items,
+            'countries'        => array_values($countriesMap),
+            'currency'         => $currency,
+            'http_code'        => (int)$res['http_code'],
+            'response_time_ms' => (int)$res['response_time_ms'],
+        ];
+    }
+
+    /**
+     * Discover countries present in the live getPrices response (never invents countries).
+     */
+    public function getCountries(): array
+    {
+        $prices = $this->getPrices();
+        if (empty($prices['ok'])) {
+            return ['ok' => false, 'error' => $prices['error'] ?? 'Could not discover countries from 5SIM getPrices.'];
+        }
+        return ['ok' => true, 'countries' => $prices['countries']];
+    }
+
+    /**
+     * Live availability & price verification for a single country + service before purchase.
+     * Queries getPrices (for exact cost) and getNumbersStatus (for verified real-time availability).
+     */
+    public function getAvailabilityAndPrice(string $countryCode, string $serviceCode, string $operator = 'any'): array
+    {
+        $c = trim($countryCode);
+        $s = trim($serviceCode);
+        $op = trim($operator) ?: 'any';
+
+        $priceRes = $this->getPrices($c, $s);
+        if (empty($priceRes['ok'])) {
+            return [
+                'ok'        => false,
+                'available' => false,
+                'count'     => 0,
+                'cost'      => null,
+                'error'     => $priceRes['error'] ?? 'Unable to fetch 5SIM pricing.',
+            ];
+        }
+
+        $matched = null;
+        foreach ($priceRes['items'] as $it) {
+            if (strcasecmp((string)$it['country_code'], $c) === 0 && strcasecmp((string)$it['service_code'], $s) === 0) {
+                $matched = $it;
+                break;
+            }
+        }
+        if ($matched === null && count($priceRes['items']) === 1) {
+            $matched = $priceRes['items'][0];
+        }
+
+        $cost = $matched['cost'] ?? null;
+        $count = isset($matched['count']) && $matched['count'] !== null ? (int)$matched['count'] : 0;
+
+        // Verify live stock via getNumbersStatus
+        $statusRes = $this->getNumbersStatus($c, $op);
+        $verified = false;
+        if (!empty($statusRes['ok'])) {
+            $verified = true;
+            $counts = $statusRes['counts'] ?? [];
+            if (array_key_exists($s, $counts)) {
+                $count = (int)$counts[$s];
+            } elseif (array_key_exists(strtolower($s), $counts)) {
+                $count = (int)$counts[strtolower($s)];
+            } else {
+                $count = 0;
             }
         }
 
         return [
             'ok'        => true,
-            'available' => $totalCount > 0 && $bestCost !== null,
-            'count'     => $totalCount,
-            'cost'      => $bestCost !== null ? Currency::normalize($bestCost, 4) : null,
-            'operator'  => $bestOp ?: 'any',
+            'available' => $verified ? ($count > 0 && $cost !== null) : ($count > 0 && $cost !== null),
+            'verified'  => $verified,
+            'count'     => $count,
+            'cost'      => $cost,
+            'operator'  => $op,
             'currency'  => (string)($this->provider['currency_code'] ?: 'RUB'),
         ];
     }
 
+    /**
+     * C. Purchase Number:
+     * ?action=getNumber&api_key=API_KEY&service=SERVICE&operator=OPERATOR&country=COUNTRY
+     * Success: ACCESS_NUMBER:<activation_id>:<phone_number>
+     */
     public function buyActivation(string $countryCode, string $serviceCode, string $operator = 'any', ?int $activationId = null): array
     {
-        if ($this->apiKey === '') {
-            return ['ok' => false, 'uncertain' => false, 'error' => '5SIM API token is not configured.'];
-        }
-        $c = rawurlencode(strtolower(trim($countryCode)));
-        $op = rawurlencode(strtolower(trim($operator ?: 'any')));
-        $p = rawurlencode(strtolower(trim($serviceCode)));
-        $url = "{$this->baseUrl}/v1/user/buy/activation/{$c}/{$op}/{$p}";
+        $params = [
+            'service'  => trim($serviceCode),
+            'operator' => trim($operator) !== '' ? trim($operator) : 'any',
+            'country'  => trim($countryCode),
+        ];
 
-        $res = OtpHttpClient::request($this->provider, 'buy', 'GET', $url, $this->authHeaders(), null, $activationId, $this->apiKey);
+        $res = $this->callHandler('getNumber', $params, $activationId);
         if (!$res['ok']) {
             return [
                 'ok'        => false,
                 'uncertain' => !empty($res['uncertain']),
-                'error'     => $res['error'] ?: '5SIM activation purchase failed.',
-                'raw'       => $res['raw'],
+                'error'     => $res['error'] ?: '5SIM getNumber request failed.',
+                'raw'       => (string)($res['raw'] ?? ''),
             ];
         }
 
-        // 5SIM sometimes responds 200 with plain text "no free phones" or "not enough user balance"
-        if (!is_array($res['data'])) {
-            $txt = trim((string)$res['raw']);
+        $raw = trim((string)$res['raw']);
+        if (preg_match('/^ACCESS_NUMBER:([^:\s]+):([^\s]+)$/i', $raw, $m)) {
+            $extId = trim($m[1]);
+            $phone = trim($m[2]);
+            $timeoutMins = max(2, (int)Helpers::setting('otp_default_timeout_minutes', '15'));
             return [
-                'ok'        => false,
-                'uncertain' => false,
-                'error'     => $txt !== '' ? $txt : 'Provider did not return an activation object.',
-                'raw'       => $res['raw'],
+                'ok'                => true,
+                'provider_order_id' => $extId,
+                'phone_number'      => $phone,
+                'operator'          => $params['operator'],
+                'provider_cost'     => '0.0000', // handler_api getNumber does not return price; OtpService uses live getPrices quote
+                'provider_currency' => (string)($this->provider['currency_code'] ?: 'RUB'),
+                'provider_status'   => 'STATUS_WAIT_CODE',
+                'status'            => 'waiting_otp',
+                'expires_at'        => date('Y-m-d H:i:s', time() + ($timeoutMins * 60)),
+                'raw'               => ['response' => $raw, 'id' => $extId, 'phone' => $phone],
             ];
         }
 
-        $d = $res['data'];
-        if (empty($d['id']) || empty($d['phone'])) {
-            return [
-                'ok'        => false,
-                'uncertain' => false,
-                'error'     => '5SIM response did not contain a valid order ID and phone number.',
-                'raw'       => $res['raw'],
-            ];
-        }
-
-        return [
-            'ok'                => true,
-            'provider_order_id' => (string)$d['id'],
-            'phone_number'      => (string)$d['phone'],
-            'operator'          => (string)($d['operator'] ?? $operator),
-            'provider_cost'     => isset($d['price']) ? Currency::normalize((string)$d['price'], 4) : '0.0000',
-            'provider_currency' => (string)($this->provider['currency_code'] ?: 'RUB'),
-            'provider_status'   => (string)($d['status'] ?? 'PENDING'),
-            'status'            => self::mapStatus((string)($d['status'] ?? 'PENDING'), !empty($d['sms'])),
-            'expires_at'        => self::parseIsoDate($d['expires'] ?? null),
-            'raw'               => $d,
-        ];
+        $plainErr = $this->detectPlainTextError($raw)
+            ?? ('Unexpected getNumber response from 5SIM: ' . substr(strip_tags($raw), 0, 140));
+        return $this->failWithLog($res, $plainErr);
     }
 
+    /**
+     * E. Check Activation / OTP Status:
+     * ?action=getStatus&api_key=API_KEY&id=ACTIVATION_ID
+     * Responses:
+     *  - STATUS_WAIT_CODE
+     *  - STATUS_WAIT_RETRY:<last_code>
+     *  - STATUS_WAIT_RESEND
+     *  - STATUS_CANCEL
+     *  - STATUS_OK:<code_or_sms_text>
+     */
     public function checkActivation(string $providerOrderId, ?int $activationId = null): array
     {
-        if ($this->apiKey === '') {
-            return ['ok' => false, 'error' => '5SIM API token is not configured.'];
-        }
-        $url = $this->baseUrl . '/v1/user/check/' . rawurlencode($providerOrderId);
-        $res = OtpHttpClient::request($this->provider, 'check', 'GET', $url, $this->authHeaders(), null, $activationId, $this->apiKey);
-        if (!$res['ok'] || !is_array($res['data'])) {
+        $res = $this->callHandler('getStatus', ['id' => trim($providerOrderId)], $activationId);
+        if (!$res['ok']) {
             return ['ok' => false, 'error' => $res['error'] ?: 'Unable to check activation status on 5SIM.'];
         }
-        $d = $res['data'];
-        $smsList = is_array($d['sms'] ?? null) ? $d['sms'] : [];
-        $latestSms = !empty($smsList) ? end($smsList) : null;
-        $otpCode = null;
-        $smsText = null;
-        $smsTime = null;
-        if (is_array($latestSms)) {
-            $otpCode = !empty($latestSms['code']) ? (string)$latestSms['code'] : null;
-            $smsText = !empty($latestSms['text']) ? (string)$latestSms['text'] : null;
-            if ($otpCode === null && $smsText !== null) {
-                $otpCode = OtpHttpClient::extractOtpFromText($smsText);
-            }
-            $smsTime = self::parseIsoDate($latestSms['date'] ?? $latestSms['created_at'] ?? null);
+
+        $raw = trim((string)$res['raw']);
+        $upper = strtoupper($raw);
+
+        if ($upper === 'STATUS_WAIT_CODE' || $upper === 'STATUS_WAIT_RESEND') {
+            return [
+                'ok'              => true,
+                'provider_status' => $upper,
+                'status'          => 'waiting_otp',
+                'phone_number'    => null,
+                'otp_code'        => null,
+                'sms_text'        => null,
+                'sms_received_at' => null,
+                'expires_at'      => null,
+                'raw'             => ['response' => $raw],
+            ];
         }
 
-        $provStatus = (string)($d['status'] ?? 'PENDING');
-        return [
-            'ok'              => true,
-            'provider_status' => $provStatus,
-            'status'          => self::mapStatus($provStatus, $otpCode !== null || $smsText !== null),
-            'phone_number'    => !empty($d['phone']) ? (string)$d['phone'] : null,
-            'otp_code'        => $otpCode,
-            'sms_text'        => $smsText,
-            'sms_received_at' => $smsTime,
-            'expires_at'      => self::parseIsoDate($d['expires'] ?? null),
-            'raw'             => $d,
-        ];
+        if (str_starts_with($upper, 'STATUS_WAIT_RETRY:')) {
+            $payload = trim(substr($raw, strlen('STATUS_WAIT_RETRY:')));
+            $otpCode = OtpHttpClient::extractOtpFromText($payload) ?? ($payload !== '' ? $payload : null);
+            return [
+                'ok'              => true,
+                'provider_status' => 'STATUS_WAIT_RETRY',
+                'status'          => 'waiting_otp',
+                'phone_number'    => null,
+                'otp_code'        => $otpCode,
+                'sms_text'        => $payload !== '' ? $payload : null,
+                'sms_received_at' => $payload !== '' ? date('Y-m-d H:i:s') : null,
+                'expires_at'      => null,
+                'raw'             => ['response' => $raw],
+            ];
+        }
+
+        if ($upper === 'STATUS_CANCEL') {
+            return [
+                'ok'              => true,
+                'provider_status' => 'STATUS_CANCEL',
+                'status'          => 'canceled',
+                'phone_number'    => null,
+                'otp_code'        => null,
+                'sms_text'        => null,
+                'sms_received_at' => null,
+                'expires_at'      => null,
+                'raw'             => ['response' => $raw],
+            ];
+        }
+
+        if (str_starts_with($upper, 'STATUS_OK:')) {
+            $payload = trim(substr($raw, strlen('STATUS_OK:')));
+            $otpCode = OtpHttpClient::extractOtpFromText($payload) ?? ($payload !== '' ? $payload : null);
+            return [
+                'ok'              => true,
+                'provider_status' => 'STATUS_OK',
+                'status'          => 'otp_received',
+                'phone_number'    => null,
+                'otp_code'        => $otpCode,
+                'sms_text'        => $payload !== '' ? $payload : null,
+                'sms_received_at' => date('Y-m-d H:i:s'),
+                'expires_at'      => null,
+                'raw'             => ['response' => $raw, 'code' => $otpCode, 'text' => $payload],
+            ];
+        }
+
+        $plainErr = $this->detectPlainTextError($raw)
+            ?? ('Unexpected getStatus response from 5SIM: ' . substr(strip_tags($raw), 0, 120));
+        return $this->failWithLog($res, $plainErr);
+    }
+
+    /**
+     * D. Change Activation Status:
+     * ?action=setStatus&api_key=API_KEY&status=STATUS&id=ACTIVATION_ID
+     * Status codes: 1 = SMS sent/ready, 3 = request another SMS, 6 = complete, 8 = cancel
+     */
+    public function setActivationStatus(string $providerOrderId, int $statusCode, ?int $activationId = null): array
+    {
+        $res = $this->callHandler('setStatus', [
+            'status' => (string)$statusCode,
+            'id'     => trim($providerOrderId),
+        ], $activationId);
+
+        if (!$res['ok']) {
+            return ['ok' => false, 'error' => $res['error'] ?: '5SIM setStatus request failed.'];
+        }
+
+        $raw = trim((string)$res['raw']);
+        $upper = strtoupper($raw);
+        $validOkTokens = ['ACCESS_READY', 'ACCESS_RETRY_GET', 'ACCESS_ACTIVATION', 'ACCESS_CANCEL'];
+
+        if (in_array($upper, $validOkTokens, true)) {
+            $mapped = match ($upper) {
+                'ACCESS_ACTIVATION' => 'completed',
+                'ACCESS_CANCEL'     => 'canceled',
+                default             => 'waiting_otp',
+            };
+            return [
+                'ok'              => true,
+                'provider_status' => $upper,
+                'status'          => $mapped,
+                'raw'             => ['response' => $raw],
+            ];
+        }
+
+        $plainErr = $this->detectPlainTextError($raw)
+            ?? ('Unexpected setStatus response from 5SIM: ' . substr(strip_tags($raw), 0, 120));
+        return $this->failWithLog($res, $plainErr);
     }
 
     public function cancelActivation(string $providerOrderId, ?int $activationId = null): array
     {
-        if ($this->apiKey === '') {
-            return ['ok' => false, 'error' => '5SIM API token is not configured.'];
-        }
-        $url = $this->baseUrl . '/v1/user/cancel/' . rawurlencode($providerOrderId);
-        $res = OtpHttpClient::request($this->provider, 'cancel', 'GET', $url, $this->authHeaders(), null, $activationId, $this->apiKey);
-        if (!$res['ok']) {
-            return ['ok' => false, 'error' => $res['error'] ?: '5SIM rejected cancellation.'];
-        }
-        $d = is_array($res['data']) ? $res['data'] : [];
-        return [
-            'ok'              => true,
-            'provider_status' => (string)($d['status'] ?? 'CANCELED'),
-            'status'          => 'canceled',
-            'raw'             => $d,
-        ];
+        return $this->setActivationStatus($providerOrderId, 8, $activationId);
     }
 
     public function finishActivation(string $providerOrderId, ?int $activationId = null): array
     {
-        if ($this->apiKey === '') {
-            return ['ok' => false, 'error' => '5SIM API token is not configured.'];
-        }
-        $url = $this->baseUrl . '/v1/user/finish/' . rawurlencode($providerOrderId);
-        $res = OtpHttpClient::request($this->provider, 'finish', 'GET', $url, $this->authHeaders(), null, $activationId, $this->apiKey);
-        if (!$res['ok']) {
-            return ['ok' => false, 'error' => $res['error'] ?: '5SIM rejected completion request.'];
-        }
-        $d = is_array($res['data']) ? $res['data'] : [];
-        return [
-            'ok'              => true,
-            'provider_status' => (string)($d['status'] ?? 'FINISHED'),
-            'status'          => 'completed',
-            'raw'             => $d,
-        ];
-    }
-
-    public static function mapStatus(string $providerStatus, bool $hasSms = false): string
-    {
-        $s = strtoupper(trim($providerStatus));
-        return match ($s) {
-            'RECEIVED' => $hasSms ? 'otp_received' : 'waiting_otp',
-            'FINISHED' => 'completed',
-            'TIMEOUT'  => 'expired',
-            'CANCELED', 'BANNED' => 'canceled',
-            'PENDING'  => $hasSms ? 'otp_received' : 'waiting_otp',
-            default    => $hasSms ? 'otp_received' : 'waiting_otp',
-        };
-    }
-
-    public static function parseIsoDate(?string $val): ?string
-    {
-        if (!$val) {
-            return null;
-        }
-        $ts = strtotime($val);
-        return $ts ? date('Y-m-d H:i:s', $ts) : null;
+        return $this->setActivationStatus($providerOrderId, 6, $activationId);
     }
 }
 
 /**
  * Configurable Custom JSON/REST OTP Provider Adapter
- * Supports arbitrary provider endpoints, auth methods, parameter templates,
+ * Kept strictly separate from the built-in 5SIM API1 adapter.
+ * Supports configurable endpoints (balance, purchase, pricing, availability, status, cancel, complete, countries),
+ * authentication methods (bearer, header, query, post_body), request parameter templates,
  * dot-path JSON response mappings, and provider status mappings.
  */
 class CustomOtpProviderAdapter implements OtpProviderInterface
@@ -590,14 +1188,33 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
         $this->statusMap = json_decode((string)($provider['status_map_json'] ?? '{}'), true) ?: [];
     }
 
-    private function executeEndpoint(string $action, string $endpointKey, array $vars = [], ?int $activationId = null): array
+    private function resolveEndpointKey(array $candidates): ?string
     {
-        $ep = trim((string)($this->endpoints[$endpointKey] ?? ''));
-        if ($ep === '') {
-            return ['ok' => false, 'uncertain' => false, 'error' => "Endpoint '{$endpointKey}' is not configured for provider {$this->provider['name']}."];
+        foreach ($candidates as $k) {
+            if (!empty($this->endpoints[$k]) && trim((string)$this->endpoints[$k]) !== '') {
+                return $k;
+            }
+        }
+        return null;
+    }
+
+    private function executeEndpoint(string $action, array $endpointCandidates, array $vars = [], ?int $activationId = null): array
+    {
+        $endpointKey = $this->resolveEndpointKey($endpointCandidates);
+        if ($endpointKey === null) {
+            $primary = $endpointCandidates[0] ?? $action;
+            return ['ok' => false, 'uncertain' => false, 'error' => "Endpoint '{$primary}' is not configured for provider {$this->provider['name']}."];
         }
 
+        $ep = trim((string)$this->endpoints[$endpointKey]);
         $vars['api_key'] = $this->apiKey;
+        if (isset($vars['id']) && !isset($vars['order_id'])) {
+            $vars['order_id'] = $vars['id'];
+        }
+        if (isset($vars['order_id']) && !isset($vars['id'])) {
+            $vars['id'] = $vars['order_id'];
+        }
+
         $replacedEp = $ep;
         foreach ($vars as $k => $v) {
             $replacedEp = str_replace('{' . $k . '}', rawurlencode((string)$v), $replacedEp);
@@ -628,7 +1245,13 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
         }
 
         // Apply configured request parameter template for this endpoint
-        $tpl = $this->reqParams[$endpointKey] ?? null;
+        $tpl = null;
+        foreach ($endpointCandidates as $cand) {
+            if (isset($this->reqParams[$cand]) && is_array($this->reqParams[$cand])) {
+                $tpl = $this->reqParams[$cand];
+                break;
+            }
+        }
         if (is_array($tpl)) {
             foreach ($tpl as $k => $v) {
                 $val = (string)$v;
@@ -704,47 +1327,169 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
 
     public function getBalance(): array
     {
-        $res = $this->executeEndpoint('balance', 'balance');
-        if (!$res['ok'] || !is_array($res['data'])) {
-            return ['ok' => false, 'error' => $res['error'] ?: 'Invalid balance response from custom provider.'];
+        $res = $this->executeEndpoint('balance', ['balance']);
+        if (!$res['ok']) {
+            return [
+                'ok'               => false,
+                'http_code'        => (int)($res['http_code'] ?? 0),
+                'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                'error'            => $res['error'] ?: 'Invalid balance response from custom provider.',
+            ];
+        }
+        if (!is_array($res['data'])) {
+            $err = 'Custom provider balance response is not valid JSON.';
+            OtpHttpClient::markLogError((int)($res['log_id'] ?? 0), (int)($this->provider['id'] ?? 0), $err, $this->apiKey);
+            return ['ok' => false, 'error' => $err];
         }
         $bal = $this->mapVal($res['data'], 'balance', ['balance', 'data.balance', 'wallet', 'credit']);
         if ($bal === null || !is_numeric((string)$bal)) {
-            return ['ok' => false, 'error' => 'Balance field could not be read from provider response. Check response JSON mapping.'];
+            $err = 'Balance field could not be read from provider response. Check response JSON mapping.';
+            OtpHttpClient::markLogError((int)($res['log_id'] ?? 0), (int)($this->provider['id'] ?? 0), $err, $this->apiKey);
+            return ['ok' => false, 'error' => $err];
         }
         return [
-            'ok'       => true,
-            'balance'  => Currency::normalize((string)$bal, 4),
-            'currency' => (string)($this->provider['currency_code'] ?: 'USD'),
-            'raw'      => $res['data'],
+            'ok'               => true,
+            'balance'          => Currency::normalize((string)$bal, 4),
+            'currency'         => (string)($this->provider['currency_code'] ?: 'USD'),
+            'http_code'        => (int)($res['http_code'] ?? 200),
+            'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+            'raw'              => $res['data'],
         ];
     }
 
     public function getCountries(): array
     {
-        if (empty($this->endpoints['countries_services'])) {
-            return ['ok' => false, 'error' => 'Countries/Services endpoint is not configured for this provider.'];
-        }
-        $res = $this->executeEndpoint('countries', 'countries_services');
+        $res = $this->executeEndpoint('countries', ['countries', 'countries_services']);
         if (!$res['ok'] || !is_array($res['data'])) {
             return ['ok' => false, 'error' => $res['error'] ?: 'Unable to fetch countries.'];
         }
         return ['ok' => true, 'countries' => $res['data']];
     }
 
+    public function getPrices(?string $countryCode = null, ?string $serviceCode = null): array
+    {
+        $res = $this->executeEndpoint('pricing', ['pricing', 'prices'], [
+            'country' => (string)($countryCode ?? ''),
+            'service' => (string)($serviceCode ?? ''),
+        ]);
+        if (!$res['ok'] || !is_array($res['data'])) {
+            return ['ok' => false, 'error' => $res['error'] ?: 'Unable to fetch pricing list from custom provider.', 'items' => [], 'countries' => []];
+        }
+
+        $currency = (string)($this->provider['currency_code'] ?: 'USD');
+        $items = [];
+        $countriesMap = [];
+        $payload = $res['data'];
+
+        // Support array-of-objects list: [{"country": "IN", "service": "whatsapp", "price": 0.50, "count": 20}, ...]
+        $list = isset($payload['items']) && is_array($payload['items'])
+            ? $payload['items']
+            : (isset($payload['services']) && is_array($payload['services']) ? $payload['services'] : (array_is_list($payload) ? $payload : null));
+
+        if (is_array($list)) {
+            foreach ($list as $row) {
+                if (!is_array($row)) continue;
+                $cCode = (string)($row['country_code'] ?? $row['country'] ?? ($countryCode ?? ''));
+                $sCode = (string)($row['service_code'] ?? $row['service'] ?? ($serviceCode ?? ''));
+                $cost = $row['price'] ?? $row['cost'] ?? null;
+                if ($cCode === '' || $sCode === '' || $cost === null || !is_numeric((string)$cost)) continue;
+                $cInfo = FiveSimCatalogReference::describeCountry($cCode);
+                $sInfo = FiveSimCatalogReference::describeService($sCode);
+                if (!empty($row['country_name'])) $cInfo['name'] = (string)$row['country_name'];
+                if (!empty($row['service_name'])) $sInfo['name'] = (string)$row['service_name'];
+                $countriesMap[$cCode] = $cInfo;
+                $items[] = [
+                    'country_code' => $cCode,
+                    'country_name' => $cInfo['name'],
+                    'country_iso'  => $cInfo['iso_code'],
+                    'country_dial' => $cInfo['dial_code'],
+                    'country_flag' => $cInfo['flag_emoji'],
+                    'service_code' => $sCode,
+                    'service_name' => $sInfo['name'],
+                    'service_slug' => FiveSimCatalogReference::makeSlug($sInfo['name'], $sCode),
+                    'icon_key'     => $sInfo['icon_key'],
+                    'is_popular'   => $sInfo['is_popular'],
+                    'operator'     => (string)($row['operator'] ?? 'any'),
+                    'cost'         => Currency::normalize((string)$cost, 4),
+                    'count'        => isset($row['count']) ? max(0, (int)$row['count']) : (isset($row['stock']) ? max(0, (int)$row['stock']) : null),
+                    'currency'     => $currency,
+                ];
+            }
+        } else {
+            // Support nested country -> service -> {cost/price, count} map
+            foreach ($payload as $cKey => $svcs) {
+                if (!is_array($svcs)) continue;
+                $cInfo = FiveSimCatalogReference::describeCountry((string)$cKey);
+                foreach ($svcs as $sKey => $info) {
+                    if (!is_array($info)) continue;
+                    $cost = $info['cost'] ?? $info['price'] ?? null;
+                    if ($cost === null || !is_numeric((string)$cost)) continue;
+                    $sInfo = FiveSimCatalogReference::describeService((string)$sKey);
+                    $countriesMap[(string)$cKey] = $cInfo;
+                    $items[] = [
+                        'country_code' => (string)$cKey,
+                        'country_name' => $cInfo['name'],
+                        'country_iso'  => $cInfo['iso_code'],
+                        'country_dial' => $cInfo['dial_code'],
+                        'country_flag' => $cInfo['flag_emoji'],
+                        'service_code' => (string)$sKey,
+                        'service_name' => $sInfo['name'],
+                        'service_slug' => $sInfo['slug'],
+                        'icon_key'     => $sInfo['icon_key'],
+                        'is_popular'   => $sInfo['is_popular'],
+                        'operator'     => (string)($info['operator'] ?? 'any'),
+                        'cost'         => Currency::normalize((string)$cost, 4),
+                        'count'        => isset($info['count']) ? max(0, (int)$info['count']) : (isset($info['stock']) ? max(0, (int)$info['stock']) : null),
+                        'currency'     => $currency,
+                    ];
+                }
+            }
+        }
+
+        return [
+            'ok'        => true,
+            'items'     => $items,
+            'countries' => array_values($countriesMap),
+            'currency'  => $currency,
+        ];
+    }
+
+    public function getNumbersStatus(?string $countryCode = null, ?string $operator = null): array
+    {
+        $res = $this->executeEndpoint('availability', ['availability', 'pricing', 'prices'], [
+            'country'  => (string)($countryCode ?? ''),
+            'operator' => (string)($operator ?? 'any'),
+        ]);
+        if (!$res['ok'] || !is_array($res['data'])) {
+            return ['ok' => false, 'error' => $res['error'] ?: 'Availability check failed.', 'counts' => []];
+        }
+        $counts = [];
+        foreach ($res['data'] as $k => $v) {
+            if (is_numeric($v)) {
+                $base = (string)preg_replace('/_[01]$/', '', (string)$k);
+                $counts[$base] = max(0, (int)$v);
+            } elseif (is_array($v) && (isset($v['count']) || isset($v['stock']))) {
+                $counts[(string)$k] = max(0, (int)($v['count'] ?? $v['stock']));
+            }
+        }
+        return ['ok' => true, 'country' => $countryCode, 'counts' => $counts, 'raw' => $res['data']];
+    }
+
     public function getAvailabilityAndPrice(string $countryCode, string $serviceCode, string $operator = 'any'): array
     {
-        if (empty($this->endpoints['pricing'])) {
+        $epKey = $this->resolveEndpointKey(['availability', 'pricing', 'prices']);
+        if ($epKey === null) {
             return [
                 'ok'        => true,
                 'available' => true,
+                'verified'  => false,
                 'count'     => null,
                 'cost'      => null,
                 'operator'  => $operator ?: 'any',
                 'currency'  => (string)($this->provider['currency_code'] ?: 'USD'),
             ];
         }
-        $res = $this->executeEndpoint('pricing', 'pricing', [
+        $res = $this->executeEndpoint('pricing', [$epKey], [
             'country'  => $countryCode,
             'service'  => $serviceCode,
             'operator' => $operator ?: 'any',
@@ -752,12 +1497,16 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
         if (!$res['ok'] || !is_array($res['data'])) {
             return ['ok' => false, 'available' => false, 'count' => 0, 'cost' => null, 'error' => $res['error'] ?: 'Pricing lookup failed.'];
         }
-        $cost = $this->mapVal($res['data'], 'price', ['price', 'cost', 'data.price', 'data.cost']);
+        $cost = $this->mapVal($res['data'], 'cost', ['price', 'cost', 'data.price', 'data.cost']);
         $count = $this->mapVal($res['data'], 'stock', ['count', 'stock', 'available', 'quantity', 'data.count']);
-        $isAvail = $count !== null ? ((int)$count > 0) : ($cost !== null);
+        $availFlag = $this->mapVal($res['data'], 'available', ['available', 'in_stock', 'data.available']);
+        $isAvail = $availFlag !== null
+            ? (bool)$availFlag
+            : ($count !== null ? ((int)$count > 0) : ($cost !== null));
         return [
             'ok'        => true,
             'available' => $isAvail,
+            'verified'  => true,
             'count'     => $count !== null ? (int)$count : ($isAvail ? 1 : 0),
             'cost'      => ($cost !== null && is_numeric((string)$cost)) ? Currency::normalize((string)$cost, 4) : null,
             'operator'  => $operator ?: 'any',
@@ -767,7 +1516,7 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
 
     public function buyActivation(string $countryCode, string $serviceCode, string $operator = 'any', ?int $activationId = null): array
     {
-        $res = $this->executeEndpoint('buy', 'purchase', [
+        $res = $this->executeEndpoint('buy', ['purchase', 'buy'], [
             'country'  => $countryCode,
             'service'  => $serviceCode,
             'operator' => $operator ?: 'any',
@@ -778,16 +1527,16 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
                 'ok'        => false,
                 'uncertain' => !empty($res['uncertain']),
                 'error'     => $res['error'] ?: 'Custom provider activation purchase failed.',
-                'raw'       => $res['raw'],
+                'raw'       => $res['raw'] ?? '',
             ];
         }
 
         $d = $res['data'];
         $extId = $this->mapVal($d, 'order_id', ['id', 'activation_id', 'order_id', 'data.id', 'data.activation_id']);
         $phone = $this->mapVal($d, 'phone', ['phone', 'number', 'phone_number', 'data.phone', 'data.number']);
-        $cost = $this->mapVal($d, 'price', ['price', 'cost', 'data.price', 'data.cost']);
+        $cost = $this->mapVal($d, 'cost', ['price', 'cost', 'data.price', 'data.cost']);
         $provStatus = (string)($this->mapVal($d, 'status', ['status', 'state', 'data.status']) ?? 'WAITING');
-        $expiresRaw = $this->mapVal($d, 'expires_at', ['expires', 'expires_at', 'expire_at', 'data.expires_at']);
+        $expiresRaw = $this->mapVal($d, 'expires', ['expires', 'expires_at', 'expire_at', 'data.expires_at']);
 
         if (empty($extId) || empty($phone)) {
             return [
@@ -821,19 +1570,18 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
 
     public function checkActivation(string $providerOrderId, ?int $activationId = null): array
     {
-        $epKey = !empty($this->endpoints['sms']) ? 'sms' : 'status';
-        $res = $this->executeEndpoint('check', $epKey, ['id' => $providerOrderId], $activationId);
+        $res = $this->executeEndpoint('check', ['status', 'sms', 'check'], ['id' => $providerOrderId, 'order_id' => $providerOrderId], $activationId);
         if (!$res['ok'] || !is_array($res['data'])) {
             return ['ok' => false, 'error' => $res['error'] ?: 'Status check failed.'];
         }
         $d = $res['data'];
         $provStatus = (string)($this->mapVal($d, 'status', ['status', 'state', 'data.status']) ?? 'WAITING');
-        $otpCode = $this->mapVal($d, 'sms_code', ['code', 'otp', 'sms.0.code', 'data.code', 'data.otp']);
-        $smsText = $this->mapVal($d, 'sms_text', ['text', 'sms_text', 'message', 'sms.0.text', 'data.text']);
+        $otpCode = $this->mapVal($d, 'otp_code', ['otp_code', 'code', 'otp', 'sms.0.code', 'data.code', 'data.otp']);
+        $smsText = $this->mapVal($d, 'sms_text', ['sms_text', 'text', 'message', 'sms.0.text', 'data.text']);
         if (($otpCode === null || $otpCode === '') && is_string($smsText) && $smsText !== '') {
             $otpCode = OtpHttpClient::extractOtpFromText($smsText);
         }
-        $expiresRaw = $this->mapVal($d, 'expires_at', ['expires', 'expires_at', 'data.expires_at']);
+        $expiresRaw = $this->mapVal($d, 'expires', ['expires', 'expires_at', 'data.expires_at']);
         $expiresAt = (is_string($expiresRaw) && strtotime($expiresRaw)) ? date('Y-m-d H:i:s', strtotime($expiresRaw)) : null;
 
         return [
@@ -849,12 +1597,23 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
         ];
     }
 
+    public function setActivationStatus(string $providerOrderId, int $statusCode, ?int $activationId = null): array
+    {
+        if ($statusCode === 8) {
+            return $this->cancelActivation($providerOrderId, $activationId);
+        }
+        if ($statusCode === 6) {
+            return $this->finishActivation($providerOrderId, $activationId);
+        }
+        return ['ok' => true, 'provider_status' => 'UPDATED', 'status' => 'waiting_otp', 'raw' => []];
+    }
+
     public function cancelActivation(string $providerOrderId, ?int $activationId = null): array
     {
-        if (empty($this->endpoints['cancel'])) {
-            return ['ok' => false, 'error' => 'Cancellation is not supported by this provider configuration.'];
+        if ($this->resolveEndpointKey(['cancel']) === null) {
+            return ['ok' => false, 'error' => 'Cancellation endpoint is not configured for this provider.'];
         }
-        $res = $this->executeEndpoint('cancel', 'cancel', ['id' => $providerOrderId], $activationId);
+        $res = $this->executeEndpoint('cancel', ['cancel'], ['id' => $providerOrderId, 'order_id' => $providerOrderId], $activationId);
         if (!$res['ok']) {
             return ['ok' => false, 'error' => $res['error'] ?: 'Provider rejected cancellation.'];
         }
@@ -863,10 +1622,10 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
 
     public function finishActivation(string $providerOrderId, ?int $activationId = null): array
     {
-        if (empty($this->endpoints['complete'])) {
+        if ($this->resolveEndpointKey(['complete', 'finish']) === null) {
             return ['ok' => true, 'provider_status' => 'COMPLETED', 'status' => 'completed', 'raw' => []];
         }
-        $res = $this->executeEndpoint('finish', 'complete', ['id' => $providerOrderId], $activationId);
+        $res = $this->executeEndpoint('finish', ['complete', 'finish'], ['id' => $providerOrderId, 'order_id' => $providerOrderId], $activationId);
         if (!$res['ok']) {
             return ['ok' => false, 'error' => $res['error'] ?: 'Provider rejected completion.'];
         }

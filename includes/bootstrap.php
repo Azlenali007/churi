@@ -25,6 +25,7 @@ require_once __DIR__ . '/../core/ThemeManager.php';
 require_once __DIR__ . '/../core/StoreManager.php';
 require_once __DIR__ . '/../core/OtpProviderAdapter.php';
 require_once __DIR__ . '/../core/OtpService.php';
+require_once __DIR__ . '/../core/OtpProviderImporter.php';
 
 // Secure error handling: log detailed errors, never display raw credentials or blank pages
 error_reporting(E_ALL);
@@ -74,9 +75,9 @@ try {
         CategoryMapper::ensureSchema();
         Helpers::setSetting('provider_import_schema_v2', '1', 'providers');
     }
-    if (Helpers::setting('dual_store_otp_schema_v1', '0') !== '1') {
+    if (Helpers::setting('dual_store_otp_schema_v2', '0') !== '1') {
         StoreManager::ensureSchema();
-        Helpers::setSetting('dual_store_otp_schema_v1', '1', 'stores');
+        Helpers::setSetting('dual_store_otp_schema_v2', '1', 'stores');
     }
 } catch (Throwable $e) {
     Logger::errorFile('Database connection error: ' . $e->getMessage());

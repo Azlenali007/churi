@@ -24,7 +24,7 @@ if (!$provider) {
     Helpers::jsonResponse(['ok' => false, 'error' => 'Provider not found.'], 404);
 }
 
-$secret = !empty($provider['webhook_secret_enc']) ? Crypto::decrypt((string)$provider['webhook_secret_enc']) : '';
+$secret = !empty($provider['webhook_secret_enc']) ? Helpers::decryptSecret((string)$provider['webhook_secret_enc']) : '';
 if ($secret === '') {
     Helpers::jsonResponse(['ok' => false, 'error' => 'Webhook secret not configured for this provider.'], 403);
 }

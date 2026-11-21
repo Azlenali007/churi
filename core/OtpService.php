@@ -51,9 +51,14 @@ class OtpService
         }
 
         $countries = Database::fetchAll(
-            "SELECT c.*, m.provider_service_code AS map_service_code, m.provider_country_code AS map_country_code,
-                    m.provider_operator AS map_operator, m.custom_selling_price, m.is_available AS map_available,
-                    m.status AS map_status
+            "SELECT c.*, m.id AS map_id, m.provider_service_code AS map_service_code, m.provider_country_code AS map_country_code,
+                    m.provider_operator AS map_operator, m.provider_price AS map_provider_price,
+                    m.provider_cost_base AS map_provider_cost_base, m.custom_selling_price,
+                    m.pricing_mode AS map_pricing_mode, m.profit_margin AS map_profit_margin,
+                    m.fixed_profit AS map_fixed_profit, m.min_price AS map_min_price, m.max_price AS map_max_price,
+                    m.auto_price_update AS map_auto_price_update, m.is_available AS map_available,
+                    m.available_count AS map_available_count, m.availability_verified AS map_availability_verified,
+                    m.last_availability_sync_at AS map_last_avail_sync, m.status AS map_status
              FROM otp_countries c
              LEFT JOIN otp_service_provider_mappings m
                ON m.country_id = c.id AND m.service_id = ? AND m.provider_id = ?
@@ -78,17 +83,25 @@ class OtpService
             $provService = (string)($c['map_service_code'] ?: ($service['provider_service_code'] ?: $service['slug']));
             $operator = (string)($c['map_operator'] ?: 'any');
 
-            $liveInfo = null;
-            $available = true;
-            $stock = null;
-            $providerCost = null;
+            $hasMapping = !empty($c['map_id']);
+            $verified = $hasMapping ? ((int)($c['map_availability_verified'] ?? 0) === 1) : false;
+            $stock = $hasMapping && $verified ? (int)($c['map_available_count'] ?? 0) : null;
+            $available = $hasMapping
+                ? ((int)$c['map_available'] === 1 && (!$verified || (int)$c['map_available_count'] > 0))
+                : true;
+            $providerCost = isset($c['map_provider_price']) && $c['map_provider_price'] !== null
+                ? (string)$c['map_provider_price']
+                : (isset($service['provider_price']) && $service['provider_price'] !== null ? (string)$service['provider_price'] : null);
 
             if ($adapter !== null && count($countries) <= 15) {
                 $liveInfo = $adapter->getAvailabilityAndPrice($provCountry, $provService, $operator);
                 if (!empty($liveInfo['ok'])) {
                     $available = !empty($liveInfo['available']);
+                    $verified = !empty($liveInfo['verified']);
                     $stock = $liveInfo['count'];
-                    $providerCost = $liveInfo['cost'];
+                    if ($liveInfo['cost'] !== null) {
+                        $providerCost = (string)$liveInfo['cost'];
+                    }
                     if (!empty($liveInfo['operator'])) {
                         $operator = (string)$liveInfo['operator'];
                     }
@@ -99,18 +112,19 @@ class OtpService
 
             $priceCalc = self::calculateSellingPrice($service, $c, $providerCost);
             $out[] = [
-                'country_id'      => (int)$c['id'],
-                'name'            => (string)$c['name'],
-                'iso_code'        => (string)$c['iso_code'],
-                'dial_code'       => (string)($c['dial_code'] ?? ''),
-                'flag_emoji'      => (string)($c['flag_emoji'] ?? ''),
-                'provider_code'   => $provCountry,
-                'operator'        => $operator,
-                'available'       => $available,
-                'stock'           => $stock,
-                'selling_price'   => $priceCalc['selling_price'],
-                'provider_cost'   => $priceCalc['provider_cost_base'],
-                'provider_name'   => (string)$service['prov_name'],
+                'country_id'            => (int)$c['id'],
+                'name'                  => (string)$c['name'],
+                'iso_code'              => (string)$c['iso_code'],
+                'dial_code'             => (string)($c['dial_code'] ?? ''),
+                'flag_emoji'            => (string)($c['flag_emoji'] ?? ''),
+                'provider_code'         => $provCountry,
+                'operator'              => $operator,
+                'available'             => $available,
+                'availability_verified' => $verified,
+                'stock'                 => $stock,
+                'selling_price'         => $priceCalc['selling_price'],
+                'provider_cost'         => $priceCalc['provider_cost_base'],
+                'provider_name'         => (string)$service['prov_name'],
             ];
         }
 
@@ -139,8 +153,13 @@ class OtpService
         }
 
         $country = Database::fetch(
-            "SELECT c.*, m.provider_service_code AS map_service_code, m.provider_country_code AS map_country_code,
-                    m.provider_operator AS map_operator, m.custom_selling_price, m.is_available AS map_available,
+            "SELECT c.*, m.id AS map_id, m.provider_service_code AS map_service_code, m.provider_country_code AS map_country_code,
+                    m.provider_operator AS map_operator, m.provider_price AS map_provider_price,
+                    m.provider_cost_base AS map_provider_cost_base, m.custom_selling_price,
+                    m.pricing_mode AS map_pricing_mode, m.profit_margin AS map_profit_margin,
+                    m.fixed_profit AS map_fixed_profit, m.min_price AS map_min_price, m.max_price AS map_max_price,
+                    m.auto_price_update AS map_auto_price_update, m.is_available AS map_available,
+                    m.available_count AS map_available_count, m.availability_verified AS map_availability_verified,
                     m.status AS map_status
              FROM otp_countries c
              LEFT JOIN otp_service_provider_mappings m
@@ -168,11 +187,13 @@ class OtpService
             return ['ok' => false, 'available' => false, 'count' => 0, 'error' => 'No numbers currently available from provider for this service & country.'];
         }
 
-        $priceCalc = self::calculateSellingPrice($service, $country, $live['cost'] ?? null);
+        $liveCostRaw = $live['cost'] ?? ($country['map_provider_price'] ?? ($service['provider_price'] ?? null));
+        $priceCalc = self::calculateSellingPrice($service, $country, $liveCostRaw !== null ? (string)$liveCostRaw : null);
 
         return [
             'ok'                 => true,
             'available'          => true,
+            'verified'           => !empty($live['verified']),
             'count'              => $live['count'] ?? null,
             'service'            => $service,
             'country'            => $country,
@@ -180,8 +201,9 @@ class OtpService
             'provider_country'   => $provCountry,
             'provider_service'   => $provService,
             'operator'           => (string)($live['operator'] ?? $operator),
-            'provider_cost_raw'  => $live['cost'] ?? null,
+            'provider_cost_raw'  => $priceCalc['provider_cost_raw'],
             'provider_cost_base' => $priceCalc['provider_cost_base'],
+            'exchange_rate'      => $priceCalc['exchange_rate'],
             'selling_price'      => $priceCalc['selling_price'],
             'currency_code'      => Currency::getBaseCode(),
         ];
@@ -281,9 +303,9 @@ class OtpService
             $activationId = Database::insert(
                 "INSERT INTO otp_activations
                  (activation_code, user_id, service_id, country_id, provider_id, provider_operator,
-                  provider_cost, provider_currency, selling_price, currency_code, profit,
+                  provider_cost_raw, provider_cost, provider_currency, exchange_rate, selling_price, currency_code, profit,
                   status, can_cancel, can_complete, idempotency_key, wallet_tx_id, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, 1, ?, ?, ?)",
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, 1, ?, ?, ?)",
                 [
                     $actCode,
                     $userId,
@@ -291,8 +313,10 @@ class OtpService
                     $countryId,
                     (int)$providerRow['id'],
                     $quote['operator'],
+                    Currency::normalize((string)($quote['provider_cost_raw'] ?? '0'), 4),
                     $quote['provider_cost_base'],
                     (string)$providerRow['currency_code'],
+                    Currency::normalize((string)($quote['exchange_rate'] ?? '1.000000'), 6),
                     $sellingPrice,
                     $baseCode,
                     Currency::sub($sellingPrice, $quote['provider_cost_base'], 4),
@@ -330,16 +354,20 @@ class OtpService
 
         // Step C: Reconcile Provider Response Safely
         if (!empty($buyRes['ok']) && !empty($buyRes['phone_number']) && !empty($buyRes['provider_order_id'])) {
+            $actualProvCostRaw = Currency::normalize((string)($quote['provider_cost_raw'] ?? '0'), 4);
             $actualProvCostBase = $quote['provider_cost_base'];
+            $actualExRate = Currency::normalize((string)($quote['exchange_rate'] ?? '1.000000'), 6);
             if (!empty($buyRes['provider_cost']) && Currency::cmp((string)$buyRes['provider_cost'], '0', 4) > 0) {
+                $actualProvCostRaw = Currency::normalize((string)$buyRes['provider_cost'], 4);
                 $conv = Currency::calculateProviderToBase(
-                    (string)$buyRes['provider_cost'],
+                    $actualProvCostRaw,
                     (string)($buyRes['provider_currency'] ?: $providerRow['currency_code']),
                     '0',
                     (string)($providerRow['rate_mode'] ?? 'auto'),
                     (string)($providerRow['exchange_rate'] ?? '1')
                 );
                 $actualProvCostBase = $conv['cost_base'];
+                $actualExRate = $conv['effective_exchange_rate'];
             }
             $profit = Currency::sub($sellingPrice, $actualProvCostBase, 4);
             $expiresAt = !empty($buyRes['expires_at']) ? $buyRes['expires_at'] : $defaultExpires;
@@ -350,14 +378,16 @@ class OtpService
             Database::execute(
                 "UPDATE otp_activations
                  SET provider_order_id = ?, phone_number = ?, provider_operator = ?,
-                     provider_cost = ?, profit = ?, status = ?, provider_status = ?,
+                     provider_cost_raw = ?, provider_cost = ?, exchange_rate = ?, profit = ?, status = ?, provider_status = ?,
                      expires_at = ?, last_checked_at = NOW(), provider_response_json = ?
                  WHERE id = ?",
                 [
                     (string)$buyRes['provider_order_id'],
                     (string)$buyRes['phone_number'],
                     (string)($buyRes['operator'] ?? $quote['operator']),
+                    $actualProvCostRaw,
                     $actualProvCostBase,
+                    $actualExRate,
                     $profit,
                     $status,
                     (string)($buyRes['provider_status'] ?? 'PENDING'),
@@ -885,41 +915,93 @@ class OtpService
         );
     }
 
+    /**
+     * Server-side selling price calculation supporting:
+     * - Explicit provider currency -> platform base currency FX conversion (never mixes currencies)
+     * - Percentage Profit Margin (%)
+     * - Fixed Profit Amount (base currency)
+     * - Fixed Selling Price override (mapping pricing_mode='fixed' or custom_selling_price)
+     * - Minimum & Maximum Selling Price clamping
+     */
     public static function calculateSellingPrice(array $service, array $countryMapping = [], ?string $liveProviderCost = null): array
     {
-        $provCurr = (string)($service['prov_currency'] ?? 'RUB');
-        $rateMode = (string)($service['prov_rate_mode'] ?? 'auto');
-        $exRate = (string)($service['prov_ex_rate'] ?? '1');
-        $margin = (string)($service['profit_margin'] ?? Helpers::setting('otp_default_profit_margin', '25.00'));
+        $provCurr = (string)($service['prov_currency'] ?? $service['provider_currency'] ?? 'RUB');
+        $rateMode = (string)($service['prov_rate_mode'] ?? $service['rate_mode'] ?? 'auto');
+        $exRate = (string)($service['prov_ex_rate'] ?? $service['exchange_rate'] ?? '1');
 
+        $mapMargin = $countryMapping['map_profit_margin'] ?? $countryMapping['profit_margin'] ?? null;
+        $margin = ($mapMargin !== null && $mapMargin !== '')
+            ? Currency::normalize((string)$mapMargin, 2)
+            : Currency::normalize((string)($service['profit_margin'] ?? Helpers::setting('otp_default_profit_margin', '25.00')), 2);
+
+        $mapFixedProfit = $countryMapping['map_fixed_profit'] ?? $countryMapping['fixed_profit'] ?? null;
+        $fixedProfit = ($mapFixedProfit !== null && $mapFixedProfit !== '')
+            ? Currency::normalize((string)$mapFixedProfit, 4)
+            : Currency::normalize((string)($service['fixed_profit'] ?? '0'), 4);
+
+        $pricingMode = (string)($countryMapping['map_pricing_mode'] ?? $countryMapping['pricing_mode'] ?? 'auto');
+        $customSelling = $countryMapping['custom_selling_price'] ?? null;
+
+        $costRaw = '0.0000';
         $costBase = '0.0000';
+        $effectiveExRate = '1.000000';
         $selling = Currency::normalize((string)($service['selling_price'] ?? '0'), 4);
 
-        if ($liveProviderCost !== null && Currency::cmp($liveProviderCost, '0', 4) > 0) {
-            $conv = Currency::calculateProviderToBase($liveProviderCost, $provCurr, $margin, $rateMode, $exRate);
+        $rawToConvert = $liveProviderCost;
+        if (($rawToConvert === null || Currency::cmp($rawToConvert, '0', 4) <= 0)
+            && !empty($countryMapping['map_provider_price'])
+            && Currency::cmp((string)$countryMapping['map_provider_price'], '0', 4) > 0
+        ) {
+            $rawToConvert = (string)$countryMapping['map_provider_price'];
+        } elseif (($rawToConvert === null || Currency::cmp($rawToConvert, '0', 4) <= 0)
+            && !empty($service['provider_price'])
+            && Currency::cmp((string)$service['provider_price'], '0', 4) > 0
+        ) {
+            $rawToConvert = (string)$service['provider_price'];
+        }
+
+        if ($rawToConvert !== null && Currency::cmp($rawToConvert, '0', 4) > 0) {
+            $costRaw = Currency::normalize($rawToConvert, 4);
+            $conv = Currency::calculateProviderToBase($costRaw, $provCurr, $margin, $rateMode, $exRate);
             $costBase = $conv['cost_base'];
-            // If service has no fixed selling price (0) or dynamic margin produces a higher safe floor, use dynamic price
-            if (Currency::cmp($selling, '0', 4) <= 0 || Currency::cmp($conv['selling_base'], $selling, 4) > 0) {
-                $selling = $conv['selling_base'];
+            $effectiveExRate = $conv['effective_exchange_rate'];
+            $dynamicSelling = Currency::add($conv['selling_rate_base'], $fixedProfit, 4);
+
+            $autoUpdate = isset($countryMapping['map_auto_price_update'])
+                ? ((int)$countryMapping['map_auto_price_update'] === 1)
+                : (!isset($service['auto_price_update']) || (int)$service['auto_price_update'] === 1);
+
+            if ($pricingMode === 'auto' && ($autoUpdate || Currency::cmp($selling, '0', 4) <= 0)) {
+                $selling = $dynamicSelling;
+            } elseif (Currency::cmp($selling, '0', 4) <= 0) {
+                $selling = $dynamicSelling;
             }
         }
 
-        // Country-specific override takes precedence if explicitly configured
-        if (!empty($countryMapping['custom_selling_price']) && Currency::cmp((string)$countryMapping['custom_selling_price'], '0', 4) > 0) {
-            $selling = Currency::normalize((string)$countryMapping['custom_selling_price'], 4);
+        // Explicit fixed selling price on country mapping takes precedence when configured
+        if ($customSelling !== null && Currency::cmp((string)$customSelling, '0', 4) > 0) {
+            if ($pricingMode === 'fixed' || Currency::cmp($selling, '0', 4) <= 0) {
+                $selling = Currency::normalize((string)$customSelling, 4);
+            }
         }
 
-        // Respect min_price / max_price bounds if configured
-        if (!empty($service['min_price']) && Currency::cmp($selling, (string)$service['min_price'], 4) < 0) {
-            $selling = Currency::normalize((string)$service['min_price'], 4);
+        // Respect mapping-level or service-level min_price / max_price bounds
+        $minPrice = $countryMapping['map_min_price'] ?? $countryMapping['min_price'] ?? ($service['min_price'] ?? null);
+        $maxPrice = $countryMapping['map_max_price'] ?? $countryMapping['max_price'] ?? ($service['max_price'] ?? null);
+
+        if ($minPrice !== null && $minPrice !== '' && Currency::cmp((string)$minPrice, '0', 4) > 0 && Currency::cmp($selling, (string)$minPrice, 4) < 0) {
+            $selling = Currency::normalize((string)$minPrice, 4);
         }
-        if (!empty($service['max_price']) && Currency::cmp((string)$service['max_price'], '0', 4) > 0 && Currency::cmp($selling, (string)$service['max_price'], 4) > 0) {
-            $selling = Currency::normalize((string)$service['max_price'], 4);
+        if ($maxPrice !== null && $maxPrice !== '' && Currency::cmp((string)$maxPrice, '0', 4) > 0 && Currency::cmp($selling, (string)$maxPrice, 4) > 0) {
+            $selling = Currency::normalize((string)$maxPrice, 4);
         }
 
         return [
+            'provider_cost_raw'  => $costRaw,
             'provider_cost_base' => $costBase,
+            'exchange_rate'      => $effectiveExRate,
             'selling_price'      => $selling,
+            'profit'             => Currency::sub($selling, $costBase, 4),
         ];
     }
 
@@ -944,14 +1026,17 @@ class OtpService
         $mode = Helpers::setting('otp_provider_error_mode', 'friendly');
         $low = strtolower($rawError);
         if ($mode === 'friendly') {
-            if (str_contains($low, 'no free phones') || str_contains($low, 'out of stock') || str_contains($low, 'no numbers')) {
+            if (str_contains($low, 'no free phones') || str_contains($low, 'out of stock') || str_contains($low, 'no_numbers') || str_contains($low, 'no numbers')) {
                 return 'No numbers are currently available for this country and service. Please choose another country or try again shortly.';
             }
-            if (str_contains($low, 'not enough user balance') || str_contains($low, 'low balance') || str_contains($low, 'no balance')) {
+            if (str_contains($low, 'not enough user balance') || str_contains($low, 'low balance') || str_contains($low, 'no_balance') || str_contains($low, 'no balance')) {
                 return 'Service is temporarily unavailable from upstream provider. Please try again later.';
             }
-            if (str_contains($low, 'unauthorized') || str_contains($low, '401') || str_contains($low, '403')) {
+            if (str_contains($low, 'unauthorized') || str_contains($low, 'bad_key') || str_contains($low, '401') || str_contains($low, '403')) {
                 return 'Upstream provider authentication failed. Please contact support.';
+            }
+            if (str_contains($low, 'early_cancel_denied')) {
+                return 'Cancellation is not allowed immediately after number assignment. Please wait briefly and try again.';
             }
         }
         return $rawError;
@@ -964,9 +1049,9 @@ class OtpService
             'name'                     => $row['prov_name'] ?? $row['provider_name'] ?? '',
             'adapter_type'             => $row['adapter_type'] ?? 'fivesim',
             'custom_adapter_class'     => $row['custom_adapter_class'] ?? null,
-            'base_url'                 => $row['base_url'] ?? 'https://5sim.net',
+            'base_url'                 => $row['base_url'] ?? FiveSimAdapter::DEFAULT_BASE_URL,
             'api_key_enc'              => $row['api_key_enc'] ?? '',
-            'auth_type'                => $row['auth_type'] ?? 'bearer',
+            'auth_type'                => $row['auth_type'] ?? 'query',
             'auth_header_name'         => $row['auth_header_name'] ?? 'Authorization',
             'auth_param_name'          => $row['auth_param_name'] ?? 'api_key',
             'request_method'           => $row['request_method'] ?? 'GET',
