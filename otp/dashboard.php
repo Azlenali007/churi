@@ -72,7 +72,7 @@ require __DIR__ . '/includes/header.php';
                 <span>Buy OTP Activation</span>
             </a>
             <?php endif; ?>
-            <a href="/user/add-funds.php" class="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs sm:text-sm font-bold transition">
+            <a href="/user/add-funds.php?store=otp" class="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs sm:text-sm font-bold transition">
                 <span>Add Funds</span>
             </a>
             <a href="/otp/activations.php" class="inline-flex items-center gap-2 px-4 py-3 rounded-2xl bg-black/20 hover:bg-black/30 text-white text-xs sm:text-sm font-bold transition">
@@ -205,14 +205,14 @@ require __DIR__ . '/includes/header.php';
         <div class="bg-white rounded-3xl border border-purple-100 p-5 shadow-xs">
             <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-extrabold text-slate-900">Recent Notifications</h3>
-                <a href="/user/notifications.php" class="text-xs font-bold text-purple-600 hover:underline">All</a>
+                <a href="/user/notifications.php?store=otp" class="text-xs font-bold text-purple-600 hover:underline">All</a>
             </div>
             <?php if (empty($recentNotifs)): ?>
             <p class="text-xs text-slate-500">No notifications yet.</p>
             <?php else: ?>
             <div class="space-y-2.5">
                 <?php foreach ($recentNotifs as $n): ?>
-                <a href="<?= Validator::e($n['link'] ?: '/user/notifications.php') ?>" class="block p-3 rounded-2xl bg-[#FAF8FF] hover:bg-purple-50/70 border border-purple-100/60 transition">
+                <a href="<?= Validator::e($n['link'] ?: '/user/notifications.php?store=otp') ?>" class="block p-3 rounded-2xl bg-[#FAF8FF] hover:bg-purple-50/70 border border-purple-100/60 transition">
                     <div class="text-xs font-extrabold text-slate-900"><?= Validator::e($n['title']) ?></div>
                     <div class="text-xs text-slate-600 mt-0.5 line-clamp-2"><?= Validator::e($n['message']) ?></div>
                     <div class="text-[10px] text-slate-400 mt-1"><?= Helpers::timeAgo($n['created_at']) ?></div>

@@ -23,9 +23,29 @@ $dispCurrency = Currency::getActiveDisplayCurrency($user);
 $showFullSms = Helpers::setting('otp_show_full_sms', '1') === '1';
 
 /**
- * Format an activation row cleanly for frontend rendering (never leaks provider secrets or raw errors).
+ * Convert any internal/provider technical error into clean customer-safe wording.
  */
-$formatActivation = static function (array $a) use ($dispCurrency, $showFullSms): array {
+$customerSafeError = static function (?string $msg, string $fallback): string {
+    $m = trim((string)$msg);
+    if ($m === '') {
+        return $fallback;
+    }
+    if (preg_match('/provider|upstream|adapter|curl|5sim|http\s*5\d\d|sqlstate|pdo|json|endpoint|api\s*key|secret|stack|trace|exception|timeout|timed\s*out/i', $m)) {
+        if (stripos($m, 'balance') !== false || stripos($m, 'fund') !== false) {
+            return 'This option is temporarily unavailable. Please try another country or service.';
+        }
+        if (stripos($m, 'no number') !== false || stripos($m, 'out of stock') !== false || stripos($m, 'unavailable') !== false) {
+            return 'No numbers are currently available for this service and country. Please try another country.';
+        }
+        return $fallback;
+    }
+    return $m;
+};
+
+/**
+ * Format an activation row cleanly for frontend rendering (never leaks provider details or raw errors).
+ */
+$formatActivation = static function (array $a) use ($dispCurrency, $showFullSms, $customerSafeError): array {
     $now = time();
     $expiresTs = !empty($a['expires_at']) ? strtotime((string)$a['expires_at']) : null;
     $remaining = $expiresTs ? max(0, $expiresTs - $now) : 0;
@@ -42,8 +62,6 @@ $formatActivation = static function (array $a) use ($dispCurrency, $showFullSms)
         'country_name'      => (string)($a['country_name'] ?? ''),
         'country_iso'       => (string)($a['country_iso'] ?? ''),
         'country_flag'      => (string)($a['country_flag'] ?? ''),
-        'provider_name'     => (string)($a['provider_name'] ?? ''),
-        'provider_order_id' => (string)($a['provider_order_id'] ?? ''),
         'phone_number'      => (string)($a['phone_number'] ?? ''),
         'otp_code'          => (string)($a['otp_code'] ?? ''),
         'sms_text'          => $showFullSms ? (string)($a['sms_text'] ?? '') : '',
@@ -59,7 +77,7 @@ $formatActivation = static function (array $a) use ($dispCurrency, $showFullSms)
         'expires_at'        => $a['expires_at'] ?: null,
         'expires_ts'        => $expiresTs,
         'remaining_seconds' => $remaining,
-        'failure_reason'    => (string)($a['failure_reason'] ?? ''),
+        'failure_reason'    => !empty($a['failure_reason']) ? $customerSafeError((string)$a['failure_reason'], 'Activation could not be completed.') : '',
         'created_at'        => date('M d, Y H:i', strtotime((string)$a['created_at'])),
     ];
 };
@@ -98,24 +116,32 @@ if ($action === 'countries') {
 
     $res = OtpService::getCountriesForService($serviceId, $live);
     if (empty($res['ok'])) {
-        Helpers::jsonResponse(['ok' => false, 'error' => $res['error'] ?? 'Could not load countries.'], 400);
+        Helpers::jsonResponse(['ok' => false, 'error' => $customerSafeError($res['error'] ?? null, 'Could not load countries right now.')], 400);
     }
 
     $countries = [];
     foreach ($res['countries'] as $c) {
+        $verified = !empty($c['availability_verified']);
+        $avail = !empty($c['available']);
+        $stock = $c['stock'];
+        // Never allow selecting countries verified as unavailable / out of stock
+        if ($verified && (!$avail || ($stock !== null && (int)$stock <= 0))) {
+            continue;
+        }
         $priceBase = (string)$c['selling_price'];
         $countries[] = [
-            'country_id'    => (int)$c['country_id'],
-            'name'          => (string)$c['name'],
-            'iso_code'      => (string)$c['iso_code'],
-            'dial_code'     => (string)$c['dial_code'],
-            'flag_emoji'    => (string)$c['flag_emoji'],
-            'available'     => (bool)$c['available'],
-            'stock'         => $c['stock'],
-            'selling_price' => $priceBase,
-            'display_price' => Currency::cmp($priceBase, '0', 4) > 0
+            'country_id'            => (int)$c['country_id'],
+            'name'                  => (string)$c['name'],
+            'iso_code'              => (string)$c['iso_code'],
+            'dial_code'             => (string)$c['dial_code'],
+            'flag_emoji'            => (string)$c['flag_emoji'],
+            'available'             => $avail,
+            'availability_verified' => $verified,
+            'stock'                 => $verified && $stock !== null ? (int)$stock : null,
+            'selling_price'         => $priceBase,
+            'display_price'         => Currency::cmp($priceBase, '0', 4) > 0
                 ? Currency::display($priceBase, $dispCurrency['code'], 2, true)
-                : 'Check Availability',
+                : 'Check Price',
         ];
     }
 
@@ -141,7 +167,7 @@ if ($action === 'quote') {
         Helpers::jsonResponse([
             'ok'        => false,
             'available' => false,
-            'error'     => $quote['error'] ?? 'Service currently unavailable for this country.',
+            'error'     => $customerSafeError($quote['error'] ?? null, 'This service is temporarily unavailable for the selected country.'),
         ], 200);
     }
 
@@ -150,21 +176,22 @@ if ($action === 'quote') {
     $sufficient = Currency::cmp($walletBase, $priceBase, 4) >= 0;
 
     Helpers::jsonResponse([
-        'ok'                  => true,
-        'available'           => true,
-        'count'               => $quote['count'],
-        'service_id'          => $serviceId,
-        'service_name'        => (string)$quote['service']['name'],
-        'country_id'          => $countryId,
-        'country_name'        => (string)$quote['country']['name'],
-        'country_flag'        => (string)($quote['country']['flag_emoji'] ?? ''),
-        'selling_price'       => $priceBase,
-        'display_price'       => Currency::display($priceBase, $dispCurrency['code'], 2, true),
-        'wallet_balance'      => $walletBase,
-        'display_balance'     => Currency::display($walletBase, $dispCurrency['code'], 2, true),
-        'sufficient_balance'  => $sufficient,
-        'timeout_minutes'     => max(2, (int)Helpers::setting('otp_default_timeout_minutes', '15')),
-        'allow_cancel'        => Helpers::setting('otp_allow_user_cancel', '1') === '1',
+        'ok'                    => true,
+        'available'             => true,
+        'availability_verified' => !empty($quote['verified']),
+        'count'                 => !empty($quote['verified']) ? $quote['count'] : null,
+        'service_id'            => $serviceId,
+        'service_name'          => (string)$quote['service']['name'],
+        'country_id'            => $countryId,
+        'country_name'          => (string)$quote['country']['name'],
+        'country_flag'          => (string)($quote['country']['flag_emoji'] ?? ''),
+        'selling_price'         => $priceBase,
+        'display_price'         => Currency::display($priceBase, $dispCurrency['code'], 2, true),
+        'wallet_balance'        => $walletBase,
+        'display_balance'       => Currency::display($walletBase, $dispCurrency['code'], 2, true),
+        'sufficient_balance'    => $sufficient,
+        'timeout_minutes'       => max(2, (int)Helpers::setting('otp_default_timeout_minutes', '15')),
+        'allow_cancel'          => Helpers::setting('otp_allow_user_cancel', '1') === '1',
     ]);
 }
 
@@ -193,7 +220,7 @@ if ($action === 'purchase') {
             'uncertain'       => !empty($res['uncertain']),
             'refunded'        => !empty($res['refunded']),
             'activation_id'   => $res['activation_id'] ?? null,
-            'error'           => $res['error'] ?? 'Could not complete activation purchase.',
+            'error'           => $customerSafeError($res['error'] ?? null, 'Could not complete activation right now. Please try again.'),
             'wallet_balance'  => $walletBase,
             'display_balance' => Currency::display($walletBase, $dispCurrency['code'], 2, true),
         ], !empty($res['duplicate']) ? 409 : 400);
@@ -261,7 +288,7 @@ if ($action === 'check') {
 
     Helpers::jsonResponse([
         'ok'              => !empty($sync['ok']),
-        'error'           => $sync['error'] ?? null,
+        'error'           => !empty($sync['error']) ? $customerSafeError((string)$sync['error'], 'Unable to refresh SMS status right now.') : null,
         'server_time'     => time(),
         'activation'      => $formatActivation($fresh),
         'wallet_balance'  => $walletBase,
@@ -284,7 +311,7 @@ if ($action === 'cancel') {
     if (empty($res['ok'])) {
         Helpers::jsonResponse([
             'ok'              => false,
-            'error'           => $res['error'] ?? 'Could not cancel activation.',
+            'error'           => $customerSafeError($res['error'] ?? null, 'Could not cancel this activation right now.'),
             'wallet_balance'  => $walletBase,
             'display_balance' => Currency::display($walletBase, $dispCurrency['code'], 2, true),
         ], 400);
@@ -310,7 +337,7 @@ if ($action === 'finish') {
     }
     $res = OtpService::finishActivation($id, $userId, false);
     if (empty($res['ok'])) {
-        Helpers::jsonResponse(['ok' => false, 'error' => $res['error'] ?? 'Could not complete activation.'], 400);
+        Helpers::jsonResponse(['ok' => false, 'error' => $customerSafeError($res['error'] ?? null, 'Could not complete this activation right now.')], 400);
     }
     Helpers::jsonResponse([
         'ok'         => true,

@@ -28,6 +28,7 @@ require_once __DIR__ . '/../core/OtpProviderAdapter.php';
 require_once __DIR__ . '/../core/OtpService.php';
 require_once __DIR__ . '/../core/OtpProviderImporter.php';
 require_once __DIR__ . '/../core/OtpResellerApi.php';
+require_once __DIR__ . '/../core/CsvImporter.php';
 
 // Secure error handling: log detailed errors, never display raw credentials or blank pages
 error_reporting(E_ALL);

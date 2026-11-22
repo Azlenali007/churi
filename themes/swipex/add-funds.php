@@ -94,7 +94,7 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
             <div x-show="tab === 'razorpay'" class="space-y-4">
                 <?php if (!$rzpCfg): ?>
                     <div class="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs leading-relaxed">
-                        <strong>Razorpay is not configured yet.</strong> An administrator must enable Razorpay and enter valid Key ID &amp; Key Secret in Admin &rarr; Payments. Please use Manual Payment below.
+                        <strong>Instant Razorpay checkout is currently unavailable.</strong> Please use the Manual Payment option to add funds to your wallet.
                     </div>
                 <?php else: ?>
                     <div>

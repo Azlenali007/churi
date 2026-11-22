@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Database::insert("INSERT INTO order_logs (order_id, actor_type, actor_id, action, details) VALUES (?, 'user', ?, 'refill_requested', 'Refill sent to provider')", [$orderId, $user['id']]);
                 Helpers::setFlash('success', 'Refill requested for order #' . $orderId . '.');
             } else {
-                Helpers::setFlash('error', 'Provider refill failed: ' . ($res['error'] ?? 'Unknown error'));
+                Helpers::setFlash('error', 'Unable to submit refill request right now. Please try again or contact support.');
             }
         } else {
             Database::execute("UPDATE orders SET refill_status = 'requested' WHERE id = ?", [$orderId]);
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Database::insert("INSERT INTO order_logs (order_id, actor_type, actor_id, action, details) VALUES (?, 'user', ?, 'cancel_requested', 'Cancellation sent to provider')", [$orderId, $user['id']]);
                 Helpers::setFlash('success', 'Cancellation requested for order #' . $orderId . '.');
             } else {
-                Helpers::setFlash('error', 'Provider cancel failed: ' . ($res['error'] ?? 'Unknown error'));
+                Helpers::setFlash('error', 'Unable to cancel this order right now. Please contact support for assistance.');
             }
         } else {
             Database::execute("UPDATE orders SET cancel_status = 'requested' WHERE id = ?", [$orderId]);

@@ -143,7 +143,7 @@ require __DIR__ . '/includes/public_header.php';
 
             <?php if (empty($featuredServices)): ?>
                 <div class="text-center py-10 text-sm text-slate-500">
-                    Services have not been published yet. Administrators can add services or import from Provider APIs in the Admin Panel.
+                    Our service catalog is currently being updated. Please check back shortly.
                 </div>
             <?php else: ?>
                 <div class="overflow-x-auto">

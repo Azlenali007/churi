@@ -25,8 +25,6 @@ foreach ($rawActive as $a) {
         'service_name'      => (string)$a['service_name'],
         'country_name'      => (string)$a['country_name'],
         'country_flag'      => (string)($a['country_flag'] ?? ''),
-        'provider_name'     => (string)($a['provider_name'] ?? ''),
-        'provider_order_id' => (string)($a['provider_order_id'] ?? ''),
         'phone_number'      => (string)($a['phone_number'] ?? ''),
         'otp_code'          => (string)($a['otp_code'] ?? ''),
         'sms_text'          => $showFullSms ? (string)($a['sms_text'] ?? '') : '',
@@ -53,7 +51,7 @@ require __DIR__ . '/includes/header.php';
             <div class="text-xs font-bold text-slate-700">
                 <span x-text="items.length"></span> active activation<span x-show="items.length !== 1">s</span>
                 <span class="text-slate-400 mx-1">&middot;</span>
-                <span class="text-slate-500" x-text="syncing ? 'Checking provider...' : 'Auto-polling every <?= $pollIntervalSec ?>s'"></span>
+                <span class="text-slate-500" x-text="syncing ? 'Checking for SMS...' : 'Auto-checking every <?= $pollIntervalSec ?>s'"></span>
             </div>
         </div>
         <div class="flex items-center gap-2">
@@ -101,7 +99,6 @@ require __DIR__ . '/includes/header.php';
                         </div>
                         <div class="mt-1 text-[11px] text-slate-500 font-mono">
                             Code: <span class="font-bold text-slate-700" x-text="a.activation_code"></span>
-                            <span x-show="a.provider_order_id"> &middot; Ref: <span x-text="a.provider_order_id"></span></span>
                             &middot; Price: <span class="font-sans font-bold text-slate-800" x-text="a.display_price"></span>
                             &middot; <span class="font-sans" x-text="a.created_at"></span>
                         </div>

@@ -45,9 +45,9 @@ $headerTagline = Helpers::setting('site_tagline', 'Grow Your Social Media');
 
     <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         <?php if (StoreManager::isOtpEnabled()): ?>
-        <a href="/otp/dashboard.php" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-extrabold shadow-sm hover:opacity-95 transition whitespace-nowrap">
+        <a href="/store-switch.php?to=otp" data-store-switch="otp" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-extrabold shadow-sm hover:opacity-95 transition whitespace-nowrap">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M9 10h6M9 14h4"/></svg>
-            <span>OTP Store</span>
+            <span>Switch to OTP Store</span>
         </a>
         <?php endif; ?>
         <!-- Outlined White Currency Pill (₹ INR ▾) matching SwipeX reference -->

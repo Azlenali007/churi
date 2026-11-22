@@ -22,6 +22,49 @@ class StoreManager
     }
 
     /**
+     * Persist the user's currently active storefront ('smm' or 'otp') in the PHP session.
+     */
+    public static function setActiveStore(string $store): void
+    {
+        $normalized = strtolower(trim($store)) === 'otp' ? 'otp' : 'smm';
+        Auth::startSession();
+        $_SESSION['active_store'] = $normalized;
+    }
+
+    /**
+     * Read the user's currently active storefront, falling back cleanly if a store is disabled.
+     */
+    public static function getActiveStore(string $default = 'smm'): string
+    {
+        Auth::startSession();
+        $sess = $_SESSION['active_store'] ?? '';
+        if ($sess === 'otp' || $sess === 'smm') {
+            return $sess;
+        }
+        if ($default === 'smm' && !self::isSmmEnabled() && self::isOtpEnabled()) {
+            return 'otp';
+        }
+        if ($default === 'otp' && !self::isOtpEnabled() && self::isSmmEnabled()) {
+            return 'smm';
+        }
+        return $default === 'otp' ? 'otp' : 'smm';
+    }
+
+    /**
+     * Resolve active store context for shared account pages (Wallet, Notifications, Support, Profile).
+     * Explicit ?store=otp|smm updates session; otherwise preserves the active store session.
+     */
+    public static function resolveStoreContext(string $default = 'smm'): string
+    {
+        $explicit = strtolower(trim((string)($_GET['store'] ?? ($_POST['store'] ?? ''))));
+        if ($explicit === 'otp' || $explicit === 'smm') {
+            self::setActiveStore($explicit);
+            return $explicit;
+        }
+        return self::getActiveStore($default);
+    }
+
+    /**
      * Enforce SMM Store availability on SMM purchasing pages & API endpoints.
      * NEVER displays a maintenance page or maintenance message.
      */
@@ -119,8 +162,8 @@ class StoreManager
         if (!self::isOtpEnabled()) {
             return '';
         }
-        $href = Auth::user() ? '/otp/dashboard.php' : '/otp/';
-        return '<a href="' . Validator::e($href) . '" class="otp-switch-pill group inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-purple-600/30 hover:shadow-xl hover:shadow-purple-600/40 hover:-translate-y-0.5 active:scale-95 transition-all ' . Validator::e($extraClasses) . '">'
+        $href = '/store-switch.php?to=otp';
+        return '<a href="' . Validator::e($href) . '" data-store-switch="otp" class="otp-switch-pill group inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-purple-600/30 hover:shadow-xl hover:shadow-purple-600/40 hover:-translate-y-0.5 active:scale-95 transition-all ' . Validator::e($extraClasses) . '">'
             . '<span class="relative flex items-center justify-center w-6 h-6 rounded-full bg-white/20 shrink-0">'
             . '<svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M9 10h6M9 14h4"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>'
             . '<span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>'

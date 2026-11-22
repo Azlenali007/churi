@@ -299,7 +299,12 @@ require __DIR__ . '/includes/header.php';
 
     <!-- Connected Providers List -->
     <div class="lg:col-span-7 smm-card rounded-3xl p-6">
-        <h2 class="text-base font-extrabold text-slate-900 mb-4">Connected Providers (<?= count($providers) ?>)</h2>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <h2 class="text-base font-extrabold text-slate-900">Connected Providers (<?= count($providers) ?>)</h2>
+            <a href="/admin/provider-csv-import.php?type=smm" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-extrabold transition">
+                <span>CSV Import Services</span>
+            </a>
+        </div>
         <?php if (empty($providers)): ?>
             <p class="text-xs text-slate-500 py-8 text-center">No providers added yet. Add a provider on the left to test API connection and auto-import categories &amp; services.</p>
         <?php else: ?>

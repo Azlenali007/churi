@@ -1,8 +1,16 @@
 <?php
 $pageTitle = 'Notifications & Announcements';
-require __DIR__ . '/partials/head.php';
-require __DIR__ . '/partials/sidebar.php';
-require __DIR__ . '/partials/header.php';
+$isOtpStoreContext = (($storeContext ?? 'smm') === 'otp');
+$storeQuery = $isOtpStoreContext ? '?store=otp' : '';
+if ($isOtpStoreContext) {
+    require APP_ROOT . '/otp/includes/head.php';
+    require APP_ROOT . '/otp/includes/sidebar.php';
+    require APP_ROOT . '/otp/includes/header.php';
+} else {
+    require __DIR__ . '/partials/head.php';
+    require __DIR__ . '/partials/sidebar.php';
+    require __DIR__ . '/partials/header.php';
+}
 
 $notifications = Database::fetchAll(
     "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 60",
@@ -21,7 +29,7 @@ $announcements = Database::fetchAll(
                 <p class="text-xs text-slate-500">Order updates, wallet credits, and ticket replies.</p>
             </div>
             <?php if (!empty($notifications)): ?>
-            <form method="POST" action="/user/notifications.php">
+            <form method="POST" action="/user/notifications.php<?= $storeQuery ?>">
                 <?= CSRF::field() ?>
                 <input type="hidden" name="action" value="mark_all_read">
                 <button type="submit" class="px-4 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-800 text-xs font-bold">Mark All Read</button>
@@ -70,4 +78,10 @@ $announcements = Database::fetchAll(
     </div>
 </div>
 
-<?php require __DIR__ . '/partials/footer.php'; ?>
+<?php
+if ($isOtpStoreContext) {
+    require APP_ROOT . '/otp/includes/footer.php';
+} else {
+    require __DIR__ . '/partials/footer.php';
+}
+?>

@@ -28,11 +28,11 @@ $otpNav[] = ['href' => '/otp/history.php', 'label' => 'OTP History', 'icon' => '
 $otpNav[] = ['href' => '/otp/reseller-api.php', 'active_paths' => ['/otp/reseller-api.php', '/otp/api-docs.php'], 'label' => 'OTP Reseller API', 'icon' => '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>'];
 
 $sharedNav = [
-    ['href' => '/user/add-funds.php', 'label' => 'Wallet', 'icon' => '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h2"/>'],
+    ['href' => '/user/add-funds.php?store=otp', 'label' => 'Wallet', 'icon' => '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h2"/>'],
     ['href' => '/otp/transactions.php', 'label' => 'Transactions', 'icon' => '<path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v8a3 3 0 0 0 3 3z"/>'],
-    ['href' => '/user/notifications.php', 'label' => 'Notifications', 'badge' => $unreadCount, 'icon' => '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'],
+    ['href' => '/user/notifications.php?store=otp', 'label' => 'Notifications', 'badge' => $unreadCount, 'icon' => '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'],
     ['href' => '/user/tickets.php?store=otp', 'label' => 'Support Tickets', 'icon' => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'],
-    ['href' => '/user/profile.php', 'label' => 'Profile & Settings', 'icon' => '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'],
+    ['href' => '/user/profile.php?store=otp', 'label' => 'Profile & Settings', 'icon' => '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'],
 ];
 ?>
 <!-- Mobile Backdrop -->
@@ -62,7 +62,7 @@ $sharedNav = [
         <div class="p-3.5 rounded-2xl bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/20">
             <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-purple-100">
                 <span>Shared Wallet</span>
-                <a href="/user/add-funds.php" class="underline hover:text-white">+ Top Up</a>
+                <a href="/user/add-funds.php?store=otp" class="underline hover:text-white">+ Top Up</a>
             </div>
             <div class="mt-1 text-lg font-extrabold tabular-nums" data-otp-wallet-balance>
                 <?= Currency::renderMoney((string)$user['wallet_balance'], null, 2, true) ?>
@@ -128,9 +128,9 @@ $sharedNav = [
     <!-- Bottom Switcher & Logout -->
     <div class="p-3 border-t border-purple-100/80 space-y-1.5">
         <?php if ($smmEnabled): ?>
-        <a href="/user/dashboard.php" class="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold transition">
+        <a href="/store-switch.php?to=smm" data-store-switch="smm" class="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold transition">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            <span>Back to SMM Store</span>
+            <span>Switch to SMM Store</span>
         </a>
         <?php endif; ?>
         <a href="/user/logout.php" class="w-full flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl text-rose-600 hover:bg-rose-50 text-xs font-bold transition">

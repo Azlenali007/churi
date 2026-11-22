@@ -1,8 +1,16 @@
 <?php
 $pageTitle = 'Profile & Settings';
-require __DIR__ . '/partials/head.php';
-require __DIR__ . '/partials/sidebar.php';
-require __DIR__ . '/partials/header.php';
+$isOtpStoreContext = (($storeContext ?? 'smm') === 'otp');
+$storeQuery = $isOtpStoreContext ? '?store=otp' : '';
+if ($isOtpStoreContext) {
+    require APP_ROOT . '/otp/includes/head.php';
+    require APP_ROOT . '/otp/includes/sidebar.php';
+    require APP_ROOT . '/otp/includes/header.php';
+} else {
+    require __DIR__ . '/partials/head.php';
+    require __DIR__ . '/partials/sidebar.php';
+    require __DIR__ . '/partials/header.php';
+}
 
 $notifPrefs = json_decode((string)$user['notification_prefs_json'], true) ?: ['order_updates' => true, 'payment_alerts' => true, 'promo_emails' => false];
 $loginLogs = Database::fetchAll(
@@ -16,7 +24,7 @@ $loginLogs = Database::fetchAll(
     <div class="lg:col-span-6 space-y-6">
         <div class="smm-card rounded-3xl p-6">
             <h1 class="text-lg font-extrabold text-slate-900 mb-4">Profile Details</h1>
-            <form method="POST" action="/user/profile.php" class="space-y-4">
+            <form method="POST" action="/user/profile.php<?= $storeQuery ?>" class="space-y-4">
                 <?= CSRF::field() ?>
                 <input type="hidden" name="action" value="update_profile">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -63,7 +71,7 @@ $loginLogs = Database::fetchAll(
         <div class="smm-card rounded-3xl p-6">
             <h2 class="text-base font-extrabold text-slate-900 mb-3">API Settings</h2>
             <p class="text-xs text-slate-500 mb-3">Control whether your Reseller API key can accept automated orders.</p>
-            <form method="POST" action="/user/profile.php" class="flex items-center justify-between">
+            <form method="POST" action="/user/profile.php<?= $storeQuery ?>" class="flex items-center justify-between">
                 <?= CSRF::field() ?>
                 <input type="hidden" name="action" value="toggle_api">
                 <span class="text-sm font-bold text-slate-800">API Status: <?= Helpers::statusBadge((string)$user['api_status']) ?></span>
@@ -78,7 +86,7 @@ $loginLogs = Database::fetchAll(
     <div class="lg:col-span-6 space-y-6">
         <div class="smm-card rounded-3xl p-6">
             <h2 class="text-lg font-extrabold text-slate-900 mb-4">Change Password</h2>
-            <form method="POST" action="/user/profile.php" class="space-y-4">
+            <form method="POST" action="/user/profile.php<?= $storeQuery ?>" class="space-y-4">
                 <?= CSRF::field() ?>
                 <input type="hidden" name="action" value="change_password">
                 <div>
@@ -120,4 +128,10 @@ $loginLogs = Database::fetchAll(
     </div>
 </div>
 
-<?php require __DIR__ . '/partials/footer.php'; ?>
+<?php
+if ($isOtpStoreContext) {
+    require APP_ROOT . '/otp/includes/footer.php';
+} else {
+    require __DIR__ . '/partials/footer.php';
+}
+?>

@@ -49,7 +49,7 @@ require __DIR__ . '/includes/header.php';
         </a>
         <?php endforeach; ?>
     </div>
-    <a href="/user/add-funds.php" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold shadow-sm">+ Add Funds</a>
+    <a href="/user/add-funds.php?store=otp" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold shadow-sm">+ Add Funds</a>
 </div>
 
 <div class="bg-white rounded-3xl border border-purple-100 shadow-xs overflow-hidden">

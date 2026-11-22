@@ -3,6 +3,7 @@
  * Custom OTP Store User Portal — Shared HTML Head
  * Loads Tailwind CSS, Plus Jakarta Sans font, shared currency config, app.js, and Alpine.js.
  */
+StoreManager::setActiveStore('otp');
 $siteName = Helpers::setting('site_name', 'SMM PRO');
 $siteFavicon = Helpers::setting('site_favicon', '');
 $title = ($pageTitle ?? 'OTP Store') . ' — ' . $siteName . ' OTP';

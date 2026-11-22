@@ -1,4 +1,5 @@
 <?php
+StoreManager::setActiveStore('smm');
 $siteName = Helpers::setting('site_name', 'SMM PRO');
 $siteFavicon = Helpers::setting('site_favicon', '');
 $title = ($pageTitle ?? 'Dashboard') . ' — ' . $siteName;

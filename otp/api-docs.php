@@ -80,7 +80,7 @@ $endpoints = [
         'method' => 'POST',
         'path'   => '/activation/create',
         'title'  => 'Create One-Time OTP Activation',
-        'desc'   => 'Atomically deducts the server-calculated reseller price from your shared wallet and assigns a real phone number from the upstream provider. Automatically refunds on definitive provider failure.',
+        'desc'   => 'Atomically deducts the server-calculated reseller price from your shared wallet and assigns a live temporary phone number. Automatically refunds on delivery failure.',
         'params' => 'service_id (required int), country_id (required int), operator (optional string), Idempotency-Key header or idempotency_key param (recommended)',
         'sample_ok' => json_encode([
             'status'  => 'success',
@@ -107,7 +107,7 @@ $endpoints = [
         'method' => 'GET',
         'path'   => '/activation/status',
         'title'  => 'Check Activation & OTP Code',
-        'desc'   => 'Checks live provider status and returns the received OTP code / SMS text. Strictly restricted to activations you own.',
+        'desc'   => 'Checks real-time SMS status and returns the received OTP code and message text. Strictly restricted to activations you own.',
         'params' => 'activation_id (required int ID or activation_code), force (optional: 1)',
         'sample_ok' => json_encode([
             'status'  => 'success',
@@ -127,7 +127,7 @@ $endpoints = [
         'method' => 'POST',
         'path'   => '/activation/cancel',
         'title'  => 'Cancel Active Activation',
-        'desc'   => 'Cancels an activation if no OTP has been received and the provider permits cancellation. Issues exact-once automatic wallet refund when enabled.',
+        'desc'   => 'Cancels an activation if no OTP has been received and cancellation is currently permitted. Issues an exact-once automatic wallet refund when eligible.',
         'params' => 'activation_id (required int ID or activation_code)',
         'sample_ok' => json_encode([
             'status'  => 'success',
@@ -139,7 +139,7 @@ $endpoints = [
         'method' => 'POST',
         'path'   => '/activation/complete',
         'title'  => 'Complete Activation',
-        'desc'   => 'Marks an active/received activation as completed on both provider and local ledger.',
+        'desc'   => 'Marks an active or received activation as completed on your ledger.',
         'params' => 'activation_id (required int ID or activation_code)',
         'sample_ok' => json_encode([
             'status'  => 'success',
@@ -250,12 +250,12 @@ $errorCodes = [
     ['INSUFFICIENT_BALANCE', '402', 'Shared wallet balance is insufficient for the server-calculated price.'],
     ['INVALID_SERVICE', '404 / 422', 'Requested service_id does not exist or is disabled.'],
     ['INVALID_COUNTRY', '404 / 422', 'Requested country_id does not exist or is disabled.'],
-    ['SERVICE_UNAVAILABLE', '409', 'Upstream provider has no stock available for this service/country right now.'],
+    ['SERVICE_UNAVAILABLE', '409', 'No numbers are currently available for this service and country.'],
     ['ACTIVATION_NOT_FOUND', '404', 'Requested activation_id does not exist.'],
     ['ACTIVATION_NOT_OWNED', '403', 'Activation belongs to a different user account.'],
     ['ACTIVATION_EXPIRED', '409', 'Activation has already expired.'],
-    ['CANCELLATION_NOT_ALLOWED', '409', 'OTP already received or provider does not permit cancellation yet.'],
-    ['PROVIDER_ERROR', '502', 'Upstream OTP provider returned an error (wallet refunded on purchase failure).'],
+    ['CANCELLATION_NOT_ALLOWED', '409', 'OTP already received or cancellation is not permitted yet.'],
+    ['PROVIDER_ERROR', '502', 'Temporary fulfillment error occurred (wallet is automatically refunded on purchase failure).'],
     ['RATE_LIMIT_EXCEEDED', '429', 'Per-minute request limit, daily order limit, or active activations limit reached.'],
     ['DUPLICATE_REQUEST', '409', 'Idempotency-Key was reused with mismatched parameters or duplicate order token.'],
 ];

@@ -19,6 +19,7 @@ $adminNavGroups = [
         ['file' => 'otp-services.php',     'label' => 'OTP Services',       'perm' => 'otp.manage'],
         ['file' => 'otp-countries.php',    'label' => 'OTP Countries',      'perm' => 'otp.manage'],
         ['file' => 'otp-providers.php',     'label' => 'OTP Providers',      'perm' => 'otp.providers'],
+        ['file' => 'provider-csv-import.php?tab=countries', 'match_file' => 'provider-csv-import.php', 'label' => 'CSV Importer', 'perm' => 'otp.providers'],
         ['file' => 'otp-provider-logs.php', 'label' => 'OTP API Logs',       'perm' => 'otp.providers'],
         ['file' => 'otp-api.php',          'label' => 'OTP Reseller API',   'perm' => 'otp.manage'],
         ['file' => 'otp-refunds.php',       'label' => 'OTP Refunds',        'perm' => 'otp.refunds', 'badge' => $pendingOtpRefunds],
@@ -31,6 +32,7 @@ $adminNavGroups = [
         ['file' => 'providers.php',           'label' => 'Provider APIs',           'perm' => 'providers.manage'],
         ['file' => 'provider-categories.php', 'label' => 'Provider Category Import','perm' => 'providers.manage'],
         ['file' => 'provider-import.php',     'label' => 'Provider Import',         'perm' => 'providers.manage'],
+        ['file' => 'provider-csv-import.php', 'label' => 'CSV Service Importer',    'perm' => 'providers.manage'],
         ['file' => 'child-panels.php',        'label' => 'Child Panels',            'perm' => 'child_panels.manage', 'badge' => $pendingPanels],
         ['file' => 'flash-sales.php',         'label' => 'Flash Sales',             'perm' => 'flash_sales.manage'],
     ],
@@ -76,7 +78,7 @@ $adminNavGroups = [
             <div class="px-3 mb-1 text-[10px] font-extrabold uppercase tracking-wider text-purple-300/70"><?= Validator::e($groupLabel) ?></div>
             <div class="space-y-0.5">
                 <?php foreach ($visible as $item):
-                    $active = $currentScript === $item['file'];
+                    $active = $currentScript === ($item['match_file'] ?? $item['file']);
                 ?>
                 <a href="/admin/<?= $item['file'] ?>"
                    class="flex items-center justify-between px-3.5 py-2 rounded-xl text-xs font-semibold transition <?= $active ? 'smm-nav-active text-white' : 'text-purple-100/80 hover:bg-white/10 hover:text-white' ?>">

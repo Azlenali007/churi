@@ -52,11 +52,10 @@ $totalPages = max(1, (int)ceil($total / $perPage));
 
 $rows = Database::fetchAll(
     "SELECT a.*, s.name AS service_name, c.name AS country_name, c.flag_emoji AS country_flag,
-            p.name AS provider_name, r.status AS refund_status
+            r.status AS refund_status
      FROM otp_activations a
      JOIN otp_services s ON s.id = a.service_id
      JOIN otp_countries c ON c.id = a.country_id
-     LEFT JOIN otp_providers p ON p.id = a.provider_id
      LEFT JOIN otp_refunds r ON r.activation_id = a.id
      WHERE {$whereSql}
      ORDER BY a.id DESC
@@ -140,9 +139,6 @@ require __DIR__ . '/includes/header.php';
                             <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-sans text-[10px] font-bold uppercase">Direct</span>
                             <?php endif; ?>
                         </div>
-                        <?php if (!empty($r['provider_name'])): ?>
-                        <div class="text-[10px] font-sans text-slate-400 font-medium"><?= Validator::e($r['provider_name']) ?></div>
-                        <?php endif; ?>
                     </td>
                     <td class="px-5 py-3.5">
                         <div class="font-bold text-slate-900"><?= Validator::e($r['service_name']) ?></div>

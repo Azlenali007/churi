@@ -31,7 +31,7 @@ $otpEnabled = StoreManager::isOtpEnabled();
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.1" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
         <span class="text-[10px]">History</span>
     </a>
-    <a href="/user/add-funds.php" class="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-xl text-slate-500 font-semibold">
+    <a href="/user/add-funds.php?store=otp" class="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-xl <?= $currentPath === '/user/add-funds.php' ? 'text-purple-700 font-extrabold' : 'text-slate-500 font-semibold' ?>">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.1" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 12h2"/></svg>
         <span class="text-[10px]">Wallet</span>
     </a>

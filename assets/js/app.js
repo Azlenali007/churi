@@ -339,3 +339,83 @@ window.smmCurrencySelector = function (cfg) {
     },
   };
 };
+
+// Smooth Dual Store Switching Animation & Double-Click Guard
+(function initDualStoreSwitcher() {
+  let isSwitching = false;
+
+  function ensureOverlay() {
+    let overlay = document.getElementById('store-transition-overlay');
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'store-transition-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.innerHTML =
+      '<div class="store-switch-card px-6 py-4 rounded-3xl bg-white border border-purple-200 shadow-2xl shadow-purple-900/15 flex items-center gap-3.5">' +
+      '<div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-600 text-white flex items-center justify-center shadow-md shadow-purple-600/25 shrink-0">' +
+      '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle><path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"></path></svg>' +
+      '</div>' +
+      '<div>' +
+      '<div id="store-switch-title" class="text-sm font-extrabold text-slate-900">Switching Store...</div>' +
+      '<div class="text-xs font-medium text-slate-500">Keeping your account &amp; wallet synced</div>' +
+      '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  document.addEventListener('click', function (ev) {
+    const link = ev.target && ev.target.closest ? ev.target.closest('a[data-store-switch]') : null;
+    if (!link) return;
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || link.target === '_blank') return;
+
+    ev.preventDefault();
+    if (isSwitching) return;
+    isSwitching = true;
+
+    const targetStore = link.getAttribute('data-store-switch') === 'otp' ? 'otp' : 'smm';
+    const destHref = link.getAttribute('href') || (targetStore === 'otp' ? '/store-switch.php?to=otp' : '/store-switch.php?to=smm');
+
+    try {
+      sessionStorage.setItem('store_switch_enter', targetStore);
+    } catch (e) {}
+
+    const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReduced) {
+      window.location.href = destHref;
+      return;
+    }
+
+    const overlay = ensureOverlay();
+    const titleEl = document.getElementById('store-switch-title');
+    if (titleEl) {
+      titleEl.textContent = targetStore === 'otp' ? 'Switching to OTP Store...' : 'Switching to SMM Store...';
+    }
+    requestAnimationFrame(function () {
+      overlay.classList.add('is-active');
+    });
+
+    setTimeout(function () {
+      window.location.href = destHref;
+    }, 180);
+  });
+
+  function applyEntranceAnimation() {
+    try {
+      const entered = sessionStorage.getItem('store_switch_enter');
+      if (!entered) return;
+      sessionStorage.removeItem('store_switch_enter');
+      const target = document.querySelector('main') || document.body;
+      if (target) {
+        target.classList.add('store-page-enter');
+      }
+    } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyEntranceAnimation);
+  } else {
+    applyEntranceAnimation();
+  }
+})();
+

@@ -312,6 +312,7 @@ require __DIR__ . '/includes/header.php';
             <button type="button" @click="activeTab = 'settings'"
                     :class="activeTab === 'settings' ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'"
                     class="px-3.5 py-2 rounded-xl font-extrabold transition"><?= $editProv ? 'Edit Provider' : '+ Add Provider' ?></button>
+            <a href="/admin/provider-csv-import.php?type=otp" class="px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-extrabold hover:bg-emerald-100 transition">CSV Import</a>
             <a href="/admin/otp-provider-logs.php" class="px-3.5 py-2 rounded-xl bg-white border border-purple-200 text-purple-700 font-extrabold hover:bg-purple-50 transition">API Logs</a>
         </div>
     </div>

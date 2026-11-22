@@ -86,7 +86,12 @@ class ThemeManager
 
     public static function renderUserView(string $viewName, array $vars = []): void
     {
-        $viewPath = self::resolveViewPath($viewName);
+        $safeView = preg_replace('/[^a-zA-Z0-9_-]/', '', $viewName);
+        if (($vars['storeContext'] ?? '') === 'otp' && is_file(APP_ROOT . '/themes/classic/' . $safeView . '.php')) {
+            $viewPath = APP_ROOT . '/themes/classic/' . $safeView . '.php';
+        } else {
+            $viewPath = self::resolveViewPath($viewName);
+        }
         if (!is_file($viewPath)) {
             http_response_code(500);
             die('Theme view not found.');

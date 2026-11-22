@@ -1,8 +1,16 @@
 <?php
 $pageTitle = 'Add Funds & Wallet';
-require __DIR__ . '/partials/head.php';
-require __DIR__ . '/partials/sidebar.php';
-require __DIR__ . '/partials/header.php';
+$isOtpStoreContext = (($storeContext ?? 'smm') === 'otp');
+$storeQuery = $isOtpStoreContext ? '?store=otp' : '';
+if ($isOtpStoreContext) {
+    require APP_ROOT . '/otp/includes/head.php';
+    require APP_ROOT . '/otp/includes/sidebar.php';
+    require APP_ROOT . '/otp/includes/header.php';
+} else {
+    require __DIR__ . '/partials/head.php';
+    require __DIR__ . '/partials/sidebar.php';
+    require __DIR__ . '/partials/header.php';
+}
 
 $gateways = PaymentService::getActiveGateways();
 $rzpCfg = PaymentService::getRazorpayConfig();
@@ -78,7 +86,7 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
             <div x-show="tab === 'razorpay'" class="space-y-4">
                 <?php if (!$rzpCfg): ?>
                     <div class="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs leading-relaxed">
-                        <strong>Razorpay is not configured yet.</strong> An administrator must enable Razorpay and enter valid Key ID & Key Secret in Admin &rarr; Payments. Please use Manual Payment below.
+                        <strong>Instant Razorpay checkout is currently unavailable.</strong> Please use the Manual Payment option to add funds to your wallet.
                     </div>
                 <?php else: ?>
                     <div>
@@ -157,7 +165,7 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
                 ?>
                     <p class="text-xs text-slate-500">No manual payment methods are currently enabled.</p>
                 <?php else: ?>
-                    <form method="POST" action="/user/add-funds.php" enctype="multipart/form-data" class="space-y-3.5"
+                    <form method="POST" action="/user/add-funds.php<?= $storeQuery ?>" enctype="multipart/form-data" class="space-y-3.5"
                           x-data="{ gateways: <?= Validator::e(json_encode($manualGateways)) ?>, gid: <?= (int)$manualGateways[0]['id'] ?>, get active() { return this.gateways.find(g => Number(g.id) === Number(this.gid)); } }">
                         <?= CSRF::field() ?>
                         <input type="hidden" name="action" value="manual_deposit">
@@ -320,4 +328,10 @@ $rzpMaxDisp = $rzpCfg ? Currency::convertFromBase((string)$rzpCfg['gateway']['ma
     </div>
 </div>
 
-<?php require __DIR__ . '/partials/footer.php'; ?>
+<?php
+if ($isOtpStoreContext) {
+    require APP_ROOT . '/otp/includes/footer.php';
+} else {
+    require __DIR__ . '/partials/footer.php';
+}
+?>

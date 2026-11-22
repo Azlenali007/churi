@@ -7,6 +7,8 @@
 require_once __DIR__ . '/../includes/bootstrap.php';
 $user = Auth::requireUser();
 $userId = (int)$user['id'];
+$storeContext = StoreManager::resolveStoreContext(!empty($_GET['otp_activation_id']) ? 'otp' : 'smm');
+$storeSuffix = $storeContext === 'otp' ? '&store=otp' : '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     CSRF::requireValid();
@@ -75,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         Helpers::setFlash('success', 'Support ticket ' . $ticketNum . ' created.');
-        Helpers::redirect('/user/tickets.php?id=' . $tid);
+        Helpers::redirect('/user/tickets.php?id=' . $tid . '&store=' . $storeType);
     } elseif ($action === 'reply_ticket') {
         $tid = (int)($_POST['ticket_id'] ?? 0);
         $ticket = Database::fetch("SELECT * FROM support_tickets WHERE id = ? AND user_id = ? LIMIT 1", [$tid, $userId]);
@@ -86,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $up = Uploader::uploadProofOrAttachment($_FILES['attachment'], 'tickets');
                 if (!$up['ok']) {
                     Helpers::setFlash('error', $up['error']);
-                    Helpers::redirect('/user/tickets.php?id=' . $tid);
+                    Helpers::redirect('/user/tickets.php?id=' . $tid . $storeSuffix);
                 }
                 $attachPath = $up['path'];
             }
@@ -97,21 +99,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             Database::execute("UPDATE support_tickets SET status = 'open', last_reply_at = NOW() WHERE id = ?", [$tid]);
             Helpers::setFlash('success', 'Reply sent.');
         }
-        Helpers::redirect('/user/tickets.php?id=' . $tid);
+        Helpers::redirect('/user/tickets.php?id=' . $tid . $storeSuffix);
     } elseif ($action === 'close_ticket') {
         $tid = (int)($_POST['ticket_id'] ?? 0);
         Database::execute("UPDATE support_tickets SET status = 'closed' WHERE id = ? AND user_id = ?", [$tid, $userId]);
         Helpers::setFlash('success', 'Ticket closed.');
-        Helpers::redirect('/user/tickets.php?id=' . $tid);
+        Helpers::redirect('/user/tickets.php?id=' . $tid . $storeSuffix);
     } elseif ($action === 'reopen_ticket') {
         $tid = (int)($_POST['ticket_id'] ?? 0);
         Database::execute("UPDATE support_tickets SET status = 'open' WHERE id = ? AND user_id = ? AND status IN ('closed','resolved')", [$tid, $userId]);
         Helpers::setFlash('success', 'Ticket reopened.');
-        Helpers::redirect('/user/tickets.php?id=' . $tid);
+        Helpers::redirect('/user/tickets.php?id=' . $tid . $storeSuffix);
     }
 }
 
-$preselectStore = (($_GET['store'] ?? '') === 'otp' || !empty($_GET['otp_activation_id']) || !StoreManager::isSmmEnabled()) ? 'otp' : 'smm';
+$preselectStore = ($storeContext === 'otp' || !empty($_GET['otp_activation_id']) || !StoreManager::isSmmEnabled()) ? 'otp' : 'smm';
 $preselectOtpActId = (int)($_GET['otp_activation_id'] ?? 0);
 $preselectOrderId = (int)($_GET['order_id'] ?? 0);
 

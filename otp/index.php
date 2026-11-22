@@ -17,7 +17,7 @@ $services = OtpService::getEnabledServices('', false, 120);
 $countries = Database::fetchAll(
     "SELECT id, name, iso_code, dial_code, flag_emoji FROM otp_countries WHERE status = 'active' ORDER BY sort_order ASC, name ASC LIMIT 60"
 );
-$activeProviderCount = (int)Database::fetchColumn("SELECT COUNT(*) FROM otp_providers WHERE status = 'active'");
+StoreManager::setActiveStore('otp');
 
 $serviceListJs = [];
 foreach ($services as $s) {
@@ -42,7 +42,7 @@ foreach ($services as $s) {
 $faqs = [
     [
         'q' => 'How does a direct one-time OTP activation work?',
-        'a' => 'Choose your target service and country, review the live price, and confirm your activation using your shared wallet balance. Our platform requests a fresh number directly from an integrated upstream provider and displays it immediately so you can receive your verification SMS in real time.',
+        'a' => 'Choose your target service and country, review the live price, and confirm your activation using your shared wallet balance. A fresh temporary number is assigned immediately so you can receive your verification SMS in real time.',
     ],
     [
         'q' => 'Do I need a separate account or wallet for the OTP Store?',
@@ -50,7 +50,7 @@ $faqs = [
     ],
     [
         'q' => 'What happens if no SMS verification code arrives?',
-        'a' => 'If an activation expires before an SMS arrives or if you cancel an active request prior to OTP delivery (where permitted by the provider), eligible refunds are returned automatically to your shared wallet with full transaction tracking.',
+        'a' => 'If an activation expires before an SMS arrives or if you cancel an active request prior to OTP delivery, eligible refunds are returned automatically to your shared wallet with full transaction tracking.',
     ],
     [
         'q' => 'Are these long-term rented phone numbers?',
@@ -58,7 +58,7 @@ $faqs = [
     ],
     [
         'q' => 'How do I get help with an OTP activation?',
-        'a' => 'Open our unified Support Tickets portal from your dashboard and select OTP Support. You can attach the exact activation record so our support team can review provider logs and resolve your issue quickly.',
+        'a' => 'Open our unified Support Tickets portal from your dashboard and select OTP Support. You can attach the exact activation record so our support team can review your order and resolve your issue quickly.',
     ],
 ];
 ?>
@@ -68,7 +68,7 @@ $faqs = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Instant OTP Activations — <?= Validator::e($siteName) ?></title>
-    <meta name="description" content="Direct one-time SMS & OTP verification activations powered by live providers and your shared wallet.">
+    <meta name="description" content="Direct one-time SMS & OTP verification activations with real-time delivery and your shared wallet.">
     <?php if ($siteFavicon): ?>
     <link rel="icon" href="<?= Validator::e($siteFavicon) ?>">
     <?php endif; ?>
@@ -76,7 +76,9 @@ $faqs = [
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="/assets/js/app.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="/assets/css/app.css">
     <style>
         body { font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; }
         [x-cloak] { display: none !important; }
@@ -125,9 +127,9 @@ $faqs = [
 
         <div class="hidden md:flex items-center gap-2.5">
             <?php if ($smmEnabled): ?>
-            <a href="<?= $user ? '/user/dashboard.php' : '/' ?>" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-purple-200 bg-purple-50/70 text-purple-800 text-xs font-bold hover:bg-purple-100 transition">
+            <a href="/store-switch.php?to=smm" data-store-switch="smm" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-purple-200 bg-purple-50/70 text-purple-800 text-xs font-bold hover:bg-purple-100 transition">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-                <span>Back to SMM Store</span>
+                <span>Switch to SMM Store</span>
             </a>
             <?php endif; ?>
 
@@ -155,7 +157,7 @@ $faqs = [
         <a @click="mobileNav=false" href="#faq" class="block px-3 py-2 rounded-xl text-sm font-semibold text-slate-700 hover:bg-purple-50">FAQ</a>
         <div class="pt-2 border-t border-purple-100 flex flex-col gap-2">
             <?php if ($smmEnabled): ?>
-            <a href="<?= $user ? '/user/dashboard.php' : '/' ?>" class="w-full text-center px-4 py-2.5 rounded-xl border border-purple-200 bg-purple-50 text-purple-800 text-xs font-bold">Back to SMM Store</a>
+            <a href="/store-switch.php?to=smm" data-store-switch="smm" class="w-full text-center px-4 py-2.5 rounded-xl border border-purple-200 bg-purple-50 text-purple-800 text-xs font-bold">Switch to SMM Store</a>
             <?php endif; ?>
             <?php if ($user): ?>
             <a href="/otp/dashboard.php" class="w-full text-center px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white text-xs font-extrabold">Open OTP Dashboard</a>
@@ -231,7 +233,7 @@ $faqs = [
                     <div class="flex items-center justify-between pb-4 border-b border-purple-50">
                         <div>
                             <div class="text-xs font-extrabold uppercase tracking-wider text-purple-600">Direct Activation Flow</div>
-                            <div class="text-base font-extrabold text-slate-900 mt-0.5">Live Provider Dispatch</div>
+                            <div class="text-base font-extrabold text-slate-900 mt-0.5">Instant SMS Dispatch</div>
                         </div>
                         <span class="px-2.5 py-1 rounded-full bg-purple-50 border border-purple-100 text-[11px] font-bold text-purple-700">
                             <?= count($services) ?> Services
@@ -272,8 +274,8 @@ $faqs = [
                             <div class="text-[11px] font-semibold text-slate-500">Countries</div>
                         </div>
                         <div class="p-2.5 rounded-xl bg-slate-50">
-                            <div class="text-lg font-extrabold text-purple-700 tabular-nums"><?= $activeProviderCount ?></div>
-                            <div class="text-[11px] font-semibold text-slate-500">Live Providers</div>
+                            <div class="text-sm font-extrabold text-purple-700 leading-7">Auto-Refund</div>
+                            <div class="text-[11px] font-semibold text-slate-500">Protected</div>
                         </div>
                     </div>
                 </div>
@@ -289,7 +291,7 @@ $faqs = [
             <div>
                 <div class="text-xs font-extrabold uppercase tracking-wider text-purple-600">Supported Platforms</div>
                 <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">Available OTP Services</h2>
-                <p class="text-sm text-slate-600 mt-1">All listed services are actively configured by our platform administrators.</p>
+                <p class="text-sm text-slate-600 mt-1">Choose a service to verify with fast one-time SMS delivery.</p>
             </div>
             <div class="flex items-center gap-2">
                 <button type="button" @click="onlyPopular = false"
@@ -306,8 +308,8 @@ $faqs = [
             <div class="w-12 h-12 mx-auto rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M9 10h6M9 14h4"/></svg>
             </div>
-            <h3 class="text-base font-extrabold text-slate-900">OTP Services Are Being Configured</h3>
-            <p class="text-sm text-slate-500 mt-1">Our team is connecting upstream OTP services. Please check back shortly or contact support.</p>
+            <h3 class="text-base font-extrabold text-slate-900">OTP Services Updating</h3>
+            <p class="text-sm text-slate-500 mt-1">Our OTP service catalog is currently being updated. Please check back shortly or contact support.</p>
         </div>
         <?php else: ?>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" x-show="filteredServices.length > 0">
@@ -351,12 +353,12 @@ $faqs = [
         <div class="max-w-2xl mb-8">
             <div class="text-xs font-extrabold uppercase tracking-wider text-purple-600">Global Coverage</div>
             <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-950 mt-1">Supported Countries</h2>
-            <p class="text-sm text-slate-600 mt-1">Choose your preferred region during checkout. Live country stock is verified directly with the upstream provider before charging your wallet.</p>
+            <p class="text-sm text-slate-600 mt-1">Choose your preferred region during checkout. Live availability is verified automatically before charging your wallet.</p>
         </div>
 
         <?php if (empty($countries)): ?>
         <div class="rounded-2xl bg-[#FAF8FF] border border-purple-100 p-6 text-sm text-slate-500">
-            No countries enabled yet. Administrators can add or import countries from the OTP Countries panel.
+            Country availability is currently being updated. Please check back shortly.
         </div>
         <?php else: ?>
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -391,7 +393,7 @@ $faqs = [
             <div class="bg-white rounded-3xl border border-purple-100 p-7 shadow-sm">
                 <div class="w-12 h-12 rounded-2xl bg-violet-100 text-violet-700 font-extrabold text-lg flex items-center justify-center mb-5">2</div>
                 <h3 class="text-base font-extrabold text-slate-900">Instant Activation &amp; Number</h3>
-                <p class="mt-2 text-sm text-slate-600 leading-relaxed">Your shared wallet is charged atomically and the upstream provider assigns a fresh number exclusively for your activation session.</p>
+                <p class="mt-2 text-sm text-slate-600 leading-relaxed">Your shared wallet is charged atomically and a fresh number is assigned exclusively for your activation session.</p>
             </div>
             <div class="bg-white rounded-3xl border border-purple-100 p-7 shadow-sm">
                 <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 font-extrabold text-lg flex items-center justify-center mb-5">3</div>
@@ -436,7 +438,7 @@ $faqs = [
         </div>
         <div class="flex flex-wrap items-center gap-5 font-semibold">
             <?php if ($smmEnabled): ?>
-            <a href="/" class="hover:text-white transition">SMM Store</a>
+            <a href="/store-switch.php?to=smm" data-store-switch="smm" class="hover:text-white transition">Switch to SMM Store</a>
             <?php endif; ?>
             <a href="<?= $user ? '/otp/dashboard.php' : '/login.php?next=' . urlencode('/otp/dashboard.php') ?>" class="hover:text-white transition">OTP Dashboard</a>
             <a href="<?= $user ? '/user/tickets.php?store=otp' : '/login.php?next=' . urlencode('/user/tickets.php?store=otp') ?>" class="hover:text-white transition">Support</a>

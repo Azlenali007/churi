@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../includes/bootstrap.php';
 $user = Auth::requireUser();
+$storeContext = StoreManager::resolveStoreContext('smm');
+$selfUrl = '/user/profile.php' . ($storeContext === 'otp' ? '?store=otp' : '');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     CSRF::requireValid();
@@ -44,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         Database::execute("UPDATE users SET api_status = ? WHERE id = ?", [$next, $user['id']]);
         Helpers::setFlash('success', 'API status changed to ' . $next . '.');
     }
-    Helpers::redirect('/user/profile.php');
+    Helpers::redirect($selfUrl);
 }
 
 ThemeManager::renderUserView('profile', get_defined_vars());

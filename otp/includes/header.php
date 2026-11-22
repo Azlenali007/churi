@@ -29,9 +29,9 @@ $smmEnabled = StoreManager::isSmmEnabled();
 
     <div class="flex items-center gap-2 sm:gap-3 shrink-0">
         <?php if ($smmEnabled): ?>
-        <a href="/user/dashboard.php" class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition">
+        <a href="/store-switch.php?to=smm" data-store-switch="smm" class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-            <span>SMM Store</span>
+            <span>Switch to SMM Store</span>
         </a>
         <?php endif; ?>
 
@@ -75,7 +75,7 @@ $smmEnabled = StoreManager::isSmmEnabled();
         </div>
 
         <!-- Shared Wallet Balance Pill -->
-        <a href="/user/add-funds.php" class="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-50 border border-purple-200 text-purple-800 text-xs font-extrabold hover:bg-purple-100 transition tabular-nums">
+        <a href="/user/add-funds.php?store=otp" class="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-purple-50 border border-purple-200 text-purple-800 text-xs font-extrabold hover:bg-purple-100 transition tabular-nums">
             <span>Wallet:</span>
             <span data-otp-wallet-balance><?= Currency::renderMoney((string)$user['wallet_balance'], null, 2, true) ?></span>
         </a>
@@ -92,13 +92,13 @@ $smmEnabled = StoreManager::isSmmEnabled();
                  class="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-purple-100 overflow-hidden z-40">
                 <div class="px-4 py-3 bg-purple-50/70 border-b border-purple-100 flex items-center justify-between">
                     <span class="text-xs font-bold text-slate-800 uppercase">Notifications</span>
-                    <a href="/user/notifications.php" class="text-xs font-bold text-purple-600 hover:underline">View All</a>
+                    <a href="/user/notifications.php?store=otp" class="text-xs font-bold text-purple-600 hover:underline">View All</a>
                 </div>
                 <div class="divide-y divide-slate-100 max-h-72 overflow-y-auto">
                     <?php if (empty($recentNotifs)): ?>
                         <div class="p-4 text-xs text-slate-500 text-center">No notifications yet.</div>
                     <?php else: foreach ($recentNotifs as $n): ?>
-                        <a href="<?= Validator::e($n['link'] ?: '/user/notifications.php') ?>" class="block px-4 py-3 hover:bg-purple-50/40 <?= !$n['is_read'] ? 'bg-purple-50/30' : '' ?>">
+                        <a href="<?= Validator::e($n['link'] ?: '/user/notifications.php?store=otp') ?>" class="block px-4 py-3 hover:bg-purple-50/40 <?= !$n['is_read'] ? 'bg-purple-50/30' : '' ?>">
                             <div class="text-xs font-bold text-slate-900"><?= Validator::e($n['title']) ?></div>
                             <div class="text-xs text-slate-500 mt-0.5 line-clamp-2"><?= Validator::e($n['message']) ?></div>
                             <div class="text-[10px] text-slate-400 mt-1"><?= Helpers::timeAgo($n['created_at']) ?></div>
@@ -121,8 +121,8 @@ $smmEnabled = StoreManager::isSmmEnabled();
                     <div class="font-extrabold text-slate-900 truncate"><?= Validator::e($user['full_name']) ?></div>
                     <div class="text-[11px] text-slate-500 truncate">@<?= Validator::e($user['username']) ?></div>
                 </div>
-                <a href="/user/profile.php" class="block px-4 py-2 text-slate-700 hover:bg-purple-50">Profile &amp; Settings</a>
-                <a href="/user/add-funds.php" class="block px-4 py-2 text-slate-700 hover:bg-purple-50">Add Funds</a>
+                <a href="/user/profile.php?store=otp" class="block px-4 py-2 text-slate-700 hover:bg-purple-50">Profile &amp; Settings</a>
+                <a href="/user/add-funds.php?store=otp" class="block px-4 py-2 text-slate-700 hover:bg-purple-50">Add Funds</a>
                 <a href="/user/tickets.php?store=otp" class="block px-4 py-2 text-slate-700 hover:bg-purple-50">OTP Support</a>
                 <div class="border-t border-slate-100 my-1"></div>
                 <a href="/user/logout.php" class="block px-4 py-2 text-rose-600 hover:bg-rose-50 font-bold">Logout</a>

@@ -1,8 +1,17 @@
 <?php
 $pageTitle = 'Support Tickets';
-require __DIR__ . '/partials/head.php';
-require __DIR__ . '/partials/sidebar.php';
-require __DIR__ . '/partials/header.php';
+$isOtpStoreContext = (($storeContext ?? 'smm') === 'otp');
+$storeQuery = $isOtpStoreContext ? '?store=otp' : '';
+$storeAmp = $isOtpStoreContext ? '&store=otp' : '';
+if ($isOtpStoreContext) {
+    require APP_ROOT . '/otp/includes/head.php';
+    require APP_ROOT . '/otp/includes/sidebar.php';
+    require APP_ROOT . '/otp/includes/header.php';
+} else {
+    require __DIR__ . '/partials/head.php';
+    require __DIR__ . '/partials/sidebar.php';
+    require __DIR__ . '/partials/header.php';
+}
 
 $statusFilter = Validator::str($_GET['status'] ?? 'all', 20);
 $storeFilter = Validator::str($_GET['filter_store'] ?? 'all', 10);
@@ -45,7 +54,7 @@ if ($viewId > 0) {
     <div class="lg:col-span-5 space-y-6">
         <div class="smm-card rounded-3xl p-6" x-data="{ storeType: '<?= Validator::e($preselectStore ?? 'smm') ?>' }">
             <h1 class="text-lg font-extrabold text-slate-900 mb-4">Open New Support Ticket</h1>
-            <form method="POST" action="/user/tickets.php" enctype="multipart/form-data" class="space-y-3">
+            <form method="POST" action="/user/tickets.php<?= $storeQuery ?>" enctype="multipart/form-data" class="space-y-3">
                 <?= CSRF::field() ?>
                 <input type="hidden" name="action" value="create_ticket">
                 <input type="hidden" name="store_type" :value="storeType">
@@ -136,15 +145,15 @@ if ($viewId > 0) {
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <h2 class="text-base font-extrabold text-slate-900">Your Tickets</h2>
                 <div class="flex gap-1 text-[11px] font-bold">
-                    <a href="/user/tickets.php?status=all&filter_store=<?= urlencode($storeFilter) ?>" class="px-2.5 py-1 rounded-lg <?= $statusFilter === 'all' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600' ?>">All</a>
-                    <a href="/user/tickets.php?status=open&filter_store=<?= urlencode($storeFilter) ?>" class="px-2.5 py-1 rounded-lg <?= $statusFilter === 'open' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600' ?>">Open</a>
-                    <a href="/user/tickets.php?status=closed&filter_store=<?= urlencode($storeFilter) ?>" class="px-2.5 py-1 rounded-lg <?= $statusFilter === 'closed' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600' ?>">Closed</a>
+                    <a href="/user/tickets.php?status=all&filter_store=<?= urlencode($storeFilter) ?><?= $storeAmp ?>" class="px-2.5 py-1 rounded-lg <?= $statusFilter === 'all' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600' ?>">All</a>
+                    <a href="/user/tickets.php?status=open&filter_store=<?= urlencode($storeFilter) ?><?= $storeAmp ?>" class="px-2.5 py-1 rounded-lg <?= $statusFilter === 'open' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600' ?>">Open</a>
+                    <a href="/user/tickets.php?status=closed&filter_store=<?= urlencode($storeFilter) ?><?= $storeAmp ?>" class="px-2.5 py-1 rounded-lg <?= $statusFilter === 'closed' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600' ?>">Closed</a>
                 </div>
             </div>
             <div class="flex gap-1.5 text-[11px] font-bold mb-4">
-                <a href="/user/tickets.php?status=<?= urlencode($statusFilter) ?>&filter_store=all" class="px-2.5 py-1 rounded-lg <?= $storeFilter === 'all' ? 'bg-slate-900 text-white' : 'bg-purple-50 text-purple-700' ?>">All Stores</a>
-                <a href="/user/tickets.php?status=<?= urlencode($statusFilter) ?>&filter_store=smm" class="px-2.5 py-1 rounded-lg <?= $storeFilter === 'smm' ? 'bg-slate-900 text-white' : 'bg-purple-50 text-purple-700' ?>">SMM</a>
-                <a href="/user/tickets.php?status=<?= urlencode($statusFilter) ?>&filter_store=otp" class="px-2.5 py-1 rounded-lg <?= $storeFilter === 'otp' ? 'bg-slate-900 text-white' : 'bg-purple-50 text-purple-700' ?>">OTP</a>
+                <a href="/user/tickets.php?status=<?= urlencode($statusFilter) ?>&filter_store=all<?= $storeAmp ?>" class="px-2.5 py-1 rounded-lg <?= $storeFilter === 'all' ? 'bg-slate-900 text-white' : 'bg-purple-50 text-purple-700' ?>">All Stores</a>
+                <a href="/user/tickets.php?status=<?= urlencode($statusFilter) ?>&filter_store=smm<?= $storeAmp ?>" class="px-2.5 py-1 rounded-lg <?= $storeFilter === 'smm' ? 'bg-slate-900 text-white' : 'bg-purple-50 text-purple-700' ?>">SMM</a>
+                <a href="/user/tickets.php?status=<?= urlencode($statusFilter) ?>&filter_store=otp<?= $storeAmp ?>" class="px-2.5 py-1 rounded-lg <?= $storeFilter === 'otp' ? 'bg-slate-900 text-white' : 'bg-purple-50 text-purple-700' ?>">OTP</a>
             </div>
             <?php if (empty($tickets)): ?>
                 <p class="text-xs text-slate-500 text-center py-6">No support tickets found.</p>
@@ -156,7 +165,7 @@ if ($viewId > 0) {
                             ? (OTP_TICKET_CATEGORIES[$t['ticket_category'] ?? ''] ?? 'OTP Support')
                             : (TICKET_DEPARTMENTS[$t['department'] ?? ''] ?? ucfirst((string)$t['department']));
                     ?>
-                    <a href="/user/tickets.php?id=<?= (int)$t['id'] ?>&status=<?= urlencode($statusFilter) ?>&filter_store=<?= urlencode($storeFilter) ?>"
+                    <a href="/user/tickets.php?id=<?= (int)$t['id'] ?>&status=<?= urlencode($statusFilter) ?>&filter_store=<?= urlencode($storeFilter) ?><?= $storeAmp ?>"
                        class="block p-3.5 rounded-2xl border transition <?= $activeTicket && (int)$activeTicket['id'] === (int)$t['id'] ? 'border-purple-600 bg-purple-50/70' : 'border-purple-100 hover:bg-slate-50' ?>">
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex items-center gap-1.5">
@@ -195,14 +204,14 @@ if ($viewId > 0) {
                     <div class="flex items-center gap-2">
                         <?= Helpers::statusBadge((string)$activeTicket['status']) ?>
                         <?php if ($activeTicket['status'] !== 'closed'): ?>
-                        <form method="POST" action="/user/tickets.php">
+                        <form method="POST" action="/user/tickets.php<?= $storeQuery ?>">
                             <?= CSRF::field() ?>
                             <input type="hidden" name="action" value="close_ticket">
                             <input type="hidden" name="ticket_id" value="<?= (int)$activeTicket['id'] ?>">
                             <button type="submit" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold">Close</button>
                         </form>
                         <?php else: ?>
-                        <form method="POST" action="/user/tickets.php">
+                        <form method="POST" action="/user/tickets.php<?= $storeQuery ?>">
                             <?= CSRF::field() ?>
                             <input type="hidden" name="action" value="reopen_ticket">
                             <input type="hidden" name="ticket_id" value="<?= (int)$activeTicket['id'] ?>">
@@ -254,7 +263,7 @@ if ($viewId > 0) {
                 </div>
 
                 <?php if ($activeTicket['status'] !== 'closed'): ?>
-                <form method="POST" action="/user/tickets.php" enctype="multipart/form-data" class="space-y-3 border-t border-slate-100 pt-4">
+                <form method="POST" action="/user/tickets.php<?= $storeQuery ?>" enctype="multipart/form-data" class="space-y-3 border-t border-slate-100 pt-4">
                     <?= CSRF::field() ?>
                     <input type="hidden" name="action" value="reply_ticket">
                     <input type="hidden" name="ticket_id" value="<?= (int)$activeTicket['id'] ?>">
@@ -272,4 +281,10 @@ if ($viewId > 0) {
     </div>
 </div>
 
-<?php require __DIR__ . '/partials/footer.php'; ?>
+<?php
+if ($isOtpStoreContext) {
+    require APP_ROOT . '/otp/includes/footer.php';
+} else {
+    require __DIR__ . '/partials/footer.php';
+}
+?>

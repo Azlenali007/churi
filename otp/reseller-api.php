@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $existing = OtpResellerApi::getKeyRecordForUser($userId);
         // Prevent a user whose OTP API was explicitly disabled by Admin from self-reactivating by regenerating
         if ($existing && $existing['status'] === 'disabled') {
-            Helpers::setFlash('error', 'Your OTP Reseller API access is currently disabled by an administrator. Please contact support.');
+            Helpers::setFlash('error', 'Your OTP Reseller API access is currently disabled. Please contact support for assistance.');
             Helpers::redirect('/otp/reseller-api.php');
         }
         $gen = OtpResellerApi::generateKeyForUser($userId, true);
@@ -143,7 +143,7 @@ require __DIR__ . '/includes/header.php';
             <a href="/otp/api-docs.php" class="px-4 py-2.5 rounded-xl bg-white text-purple-900 hover:bg-purple-50 text-xs font-extrabold shadow transition">
                 API Documentation &rarr;
             </a>
-            <a href="/user/add-funds.php" class="px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 text-xs font-extrabold transition">
+            <a href="/user/add-funds.php?store=otp" class="px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 text-xs font-extrabold transition">
                 + Add Shared Funds
             </a>
         </div>
