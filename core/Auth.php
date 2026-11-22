@@ -252,6 +252,18 @@ class Auth
         return in_array('*', $perms, true) || in_array($permission, $perms, true);
     }
 
+    /**
+     * Convenience permission check for the currently authenticated admin session.
+     */
+    public static function hasPermission(string $permission): bool
+    {
+        $admin = self::admin();
+        if (!$admin) {
+            return false;
+        }
+        return self::adminHasPermission($admin, $permission);
+    }
+
     public static function logoutAdmin(): void
     {
         self::startSession('admin');

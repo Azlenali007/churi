@@ -179,8 +179,12 @@ class OtpService
         $cleanOpOverride = $operatorOverride !== null ? preg_replace('/[^a-zA-Z0-9_\-]/', '', trim($operatorOverride)) : '';
         $operator = $cleanOpOverride !== '' ? substr($cleanOpOverride, 0, 60) : (string)($country['map_operator'] ?: 'any');
 
-        $adapter = OtpProviderFactory::make(self::extractProviderRow($service));
-        $live = $adapter->getAvailabilityAndPrice($provCountry, $provService, $operator);
+        try {
+            $adapter = OtpProviderFactory::make(self::extractProviderRow($service));
+            $live = $adapter->getAvailabilityAndPrice($provCountry, $provService, $operator);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'error_code' => 'PROVIDER_ERROR', 'error' => self::formatProviderError(ProviderErrorHandler::redact($e->getMessage()))];
+        }
         if (empty($live['ok'])) {
             return ['ok' => false, 'error_code' => 'PROVIDER_ERROR', 'error' => self::formatProviderError($live['error'] ?? 'Provider availability check failed.')];
         }
@@ -546,8 +550,13 @@ class OtpService
             return ['ok' => true, 'activation' => $act];
         }
 
-        $adapter = OtpProviderFactory::make(self::extractProviderRow($act));
-        $chk = $adapter->checkActivation((string)$act['provider_order_id'], $activationId);
+        try {
+            $adapter = OtpProviderFactory::make(self::extractProviderRow($act));
+            $chk = $adapter->checkActivation((string)$act['provider_order_id'], $activationId);
+        } catch (Throwable $e) {
+            Database::execute("UPDATE otp_activations SET last_checked_at = NOW() WHERE id = ?", [$activationId]);
+            return ['ok' => false, 'error' => ProviderErrorHandler::redact($e->getMessage()), 'activation' => $act];
+        }
         if (empty($chk['ok'])) {
             Database::execute("UPDATE otp_activations SET last_checked_at = NOW() WHERE id = ?", [$activationId]);
             return ['ok' => false, 'error' => $chk['error'] ?? 'Status check failed.', 'activation' => $act];
@@ -666,8 +675,12 @@ class OtpService
 
             $provider = Database::fetch("SELECT * FROM otp_providers WHERE id = ? LIMIT 1", [$act['provider_id']]);
             if ($provider) {
-                $adapter = OtpProviderFactory::make($provider);
-                $cancelRes = $adapter->cancelActivation((string)$act['provider_order_id'], $activationId);
+                try {
+                    $adapter = OtpProviderFactory::make($provider);
+                    $cancelRes = $adapter->cancelActivation((string)$act['provider_order_id'], $activationId);
+                } catch (Throwable $e) {
+                    $cancelRes = ['ok' => false, 'error' => ProviderErrorHandler::redact($e->getMessage())];
+                }
                 if (empty($cancelRes['ok'])) {
                     return ['ok' => false, 'error' => self::formatProviderError($cancelRes['error'] ?? 'Provider did not permit cancellation right now.')];
                 }
@@ -714,8 +727,12 @@ class OtpService
         if (!empty($act['provider_order_id']) && !empty($act['provider_id'])) {
             $provider = Database::fetch("SELECT * FROM otp_providers WHERE id = ? LIMIT 1", [$act['provider_id']]);
             if ($provider) {
-                $adapter = OtpProviderFactory::make($provider);
-                $adapter->finishActivation((string)$act['provider_order_id'], $activationId);
+                try {
+                    $adapter = OtpProviderFactory::make($provider);
+                    $adapter->finishActivation((string)$act['provider_order_id'], $activationId);
+                } catch (Throwable $e) {
+                    Logger::errorFile('OtpService::finishActivation provider error: ' . ProviderErrorHandler::redact($e->getMessage()));
+                }
             }
         }
 
@@ -970,7 +987,7 @@ class OtpService
      */
     public static function calculateSellingPrice(array $service, array $countryMapping = [], ?string $liveProviderCost = null): array
     {
-        $provCurr = (string)($service['prov_currency'] ?? $service['provider_currency'] ?? 'RUB');
+        $provCurr = (string)($service['prov_currency'] ?? $service['provider_currency'] ?? Currency::getBaseCode());
         $rateMode = (string)($service['prov_rate_mode'] ?? $service['rate_mode'] ?? 'auto');
         $exRate = (string)($service['prov_ex_rate'] ?? $service['exchange_rate'] ?? '1');
 
@@ -1092,11 +1109,11 @@ class OtpService
         return [
             'id'                       => $row['prov_id'] ?? $row['provider_id'] ?? 0,
             'name'                     => $row['prov_name'] ?? $row['provider_name'] ?? '',
-            'adapter_type'             => $row['adapter_type'] ?? 'fivesim',
+            'adapter_type'             => $row['adapter_type'] ?? 'custom_json',
             'custom_adapter_class'     => $row['custom_adapter_class'] ?? null,
-            'base_url'                 => $row['base_url'] ?? FiveSimAdapter::DEFAULT_BASE_URL,
+            'base_url'                 => $row['base_url'] ?? '',
             'api_key_enc'              => $row['api_key_enc'] ?? '',
-            'auth_type'                => $row['auth_type'] ?? 'query',
+            'auth_type'                => $row['auth_type'] ?? 'bearer',
             'auth_header_name'         => $row['auth_header_name'] ?? 'Authorization',
             'auth_param_name'          => $row['auth_param_name'] ?? 'api_key',
             'request_method'           => $row['request_method'] ?? 'GET',
@@ -1106,7 +1123,7 @@ class OtpService
             'status_map_json'          => $row['status_map_json'] ?? '{}',
             'timeout_seconds'          => $row['timeout_seconds'] ?? 20,
             'polling_interval_seconds' => $row['polling_interval_seconds'] ?? 5,
-            'currency_code'            => $row['prov_currency'] ?? $row['provider_currency'] ?? 'RUB',
+            'currency_code'            => $row['prov_currency'] ?? $row['provider_currency'] ?? Currency::getBaseCode(),
             'exchange_rate'            => $row['prov_ex_rate'] ?? '1',
             'rate_mode'                => $row['prov_rate_mode'] ?? 'auto',
         ];

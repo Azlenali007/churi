@@ -152,7 +152,7 @@ class OtpProviderImporter
             'staged_job_id'         => $jobId,
             'provider_id'           => $providerId,
             'provider_name'         => (string)$provider['name'],
-            'provider_currency'     => (string)($provider['currency_code'] ?: 'RUB'),
+            'provider_currency'     => (string)($provider['currency_code'] ?: Currency::getBaseCode()),
             'base_currency'         => Currency::getBaseCode(),
             'total_found'           => count($staged),
             'total_countries_found' => count($uniqueCountries),
@@ -203,7 +203,7 @@ class OtpProviderImporter
             'ok'                    => true,
             'staged_job_id'         => $stagedJobId,
             'provider_id'           => $providerId,
-            'provider_currency'     => (string)($provider['currency_code'] ?: 'RUB'),
+            'provider_currency'     => (string)($provider['currency_code'] ?: Currency::getBaseCode()),
             'base_currency'         => Currency::getBaseCode(),
             'total_found'           => count($staged),
             'total_countries_found' => (int)$job['total_countries_found'],
@@ -338,25 +338,65 @@ class OtpProviderImporter
         if ($stagedItems === null) {
             try {
                 $adapter = OtpProviderFactory::make($provider);
-                $res = $adapter->getPrices($filterCountry, $filterService);
             } catch (Throwable $e) {
-                $err = 'Provider adapter error: ' . $e->getMessage();
+                $err = 'Provider adapter error: ' . ProviderErrorHandler::redact($e->getMessage());
+                ProviderErrorHandler::recordProviderError('otp', $providerId, $err, false);
                 self::failJob($jobId, $err, [$err]);
                 return ['ok' => false, 'job_id' => $jobId, 'error' => $err, 'job' => self::getJobStatus($jobId)];
             }
 
-            if (empty($res['ok'])) {
-                $err = (string)($res['error'] ?? 'Failed to fetch data from provider API.');
-                Database::execute(
-                    "UPDATE otp_providers SET last_error = ? WHERE id = ?",
-                    [substr($err, 0, 500), $providerId]
-                );
-                self::failJob($jobId, $err, [$err]);
-                return ['ok' => false, 'job_id' => $jobId, 'error' => $err, 'job' => self::getJobStatus($jobId)];
+            if ($jobType === 'countries') {
+                try {
+                    $cRes = $adapter->getCountries();
+                } catch (Throwable $e) {
+                    $err = 'Provider country fetch error: ' . ProviderErrorHandler::redact($e->getMessage());
+                    ProviderErrorHandler::recordProviderError('otp', $providerId, $err, false);
+                    self::failJob($jobId, $err, [$err]);
+                    return ['ok' => false, 'job_id' => $jobId, 'error' => $err, 'job' => self::getJobStatus($jobId)];
+                }
+
+                if (empty($cRes['ok'])) {
+                    $err = ProviderErrorHandler::redact((string)($cRes['error'] ?? 'Failed to fetch countries from provider API.'));
+                    ProviderErrorHandler::recordProviderError('otp', $providerId, $err, false);
+                    self::failJob($jobId, $err, [$err]);
+                    return ['ok' => false, 'job_id' => $jobId, 'error' => $err, 'job' => self::getJobStatus($jobId)];
+                }
+
+                $stagedCountries = is_array($cRes['countries'] ?? null) ? $cRes['countries'] : [];
+                $rawItems = is_array($cRes['items'] ?? null) ? $cRes['items'] : [];
+
+                // If admin opted to also link countries to imported services and getCountries() didn't return items, fetch pricing safely
+                if (!empty($normalizedOptions['link_services']) && empty($rawItems)) {
+                    try {
+                        $pRes = $adapter->getPrices($filterCountry, $filterService);
+                        if (!empty($pRes['ok']) && is_array($pRes['items'] ?? null)) {
+                            $rawItems = $pRes['items'];
+                        }
+                    } catch (Throwable $ignored) {
+                        // Country import continues even if provider does not expose a separate pricing endpoint
+                    }
+                }
+            } else {
+                try {
+                    $res = $adapter->getPrices($filterCountry, $filterService);
+                } catch (Throwable $e) {
+                    $err = 'Provider adapter error: ' . ProviderErrorHandler::redact($e->getMessage());
+                    ProviderErrorHandler::recordProviderError('otp', $providerId, $err, false);
+                    self::failJob($jobId, $err, [$err]);
+                    return ['ok' => false, 'job_id' => $jobId, 'error' => $err, 'job' => self::getJobStatus($jobId)];
+                }
+
+                if (empty($res['ok'])) {
+                    $err = ProviderErrorHandler::redact((string)($res['error'] ?? 'Failed to fetch data from provider API.'));
+                    ProviderErrorHandler::recordProviderError('otp', $providerId, $err, false);
+                    self::failJob($jobId, $err, [$err]);
+                    return ['ok' => false, 'job_id' => $jobId, 'error' => $err, 'job' => self::getJobStatus($jobId)];
+                }
+
+                $rawItems = is_array($res['items'] ?? null) ? $res['items'] : [];
+                $stagedCountries = is_array($res['countries'] ?? null) ? $res['countries'] : [];
             }
 
-            $rawItems = is_array($res['items'] ?? null) ? $res['items'] : [];
-            $stagedCountries = is_array($res['countries'] ?? null) ? $res['countries'] : [];
             $stagedItems = [];
             foreach ($rawItems as $it) {
                 $cCode = trim((string)($it['country_code'] ?? ''));
@@ -414,8 +454,8 @@ class OtpProviderImporter
                 $uniqueCountriesMap[$cKey] = [
                     'code'      => $cCode,
                     'name'      => (string)($ct['name'] ?? ucfirst($cCode)),
-                    'iso'       => (string)($ct['iso'] ?? strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $cCode), 0, 2) ?: 'XX')),
-                    'flag'      => (string)($ct['flag'] ?? ''),
+                    'iso'       => (string)($ct['iso_code'] ?? $ct['iso'] ?? strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $cCode), 0, 2) ?: 'XX')),
+                    'flag'      => (string)($ct['flag_emoji'] ?? $ct['flag'] ?? ''),
                     'dial_code' => (string)($ct['dial_code'] ?? ''),
                 ];
             }
@@ -457,10 +497,10 @@ class OtpProviderImporter
         // If 0 records found, finish cleanly with explicit zero_reason (never silently claim success with empty data)
         if ($totalToProcess === 0) {
             $zeroReason = $jobType === 'countries'
-                ? 'Provider getPrices API returned 0 supported countries. Verify your API key or provider availability.'
+                ? 'Provider API returned 0 supported countries. Verify your provider configuration, API key, or country endpoint.'
                 : ($skippedPreFilter > 0
                     ? 'None of the fetched provider records matched the selected filter or selection criteria.'
-                    : 'Provider getPrices API returned 0 service/country pricing records.');
+                    : 'Provider API returned 0 service/country pricing records.');
             Database::execute(
                 "UPDATE otp_import_jobs
                  SET status = 'completed', stage_message = 'Completed',
@@ -835,7 +875,7 @@ class OtpProviderImporter
 
         $pricing = self::normalizePricingOptions($options['pricing'] ?? []);
         $importStatus = (($options['import_status'] ?? 'active') === 'inactive') ? 'inactive' : 'active';
-        $provCurr = (string)($provider['currency_code'] ?: 'RUB');
+        $provCurr = (string)($provider['currency_code'] ?: Currency::getBaseCode());
 
         // Load caches
         $countryCacheByCode = [];
@@ -1394,7 +1434,7 @@ class OtpProviderImporter
     ): array {
         $pricing = self::normalizePricingOptions($pricingOpts);
         $baseCode = Currency::getBaseCode();
-        $provCurr = (string)($provider['currency_code'] ?: 'RUB');
+        $provCurr = (string)($provider['currency_code'] ?: $baseCode);
         $q = strtolower(trim($search));
         $cf = strtolower(trim($countryFilter));
 
@@ -1672,7 +1712,7 @@ class OtpProviderImporter
                          selling_price = CASE WHEN auto_price_update = 1 THEN ? ELSE selling_price END,
                          last_price_sync_at = NOW()
                      WHERE id = ?",
-                    [$low['cost'], (string)($provider['currency_code'] ?: 'RUB'), $low['selling_price'], $svcId]
+                    [$low['cost'], (string)($provider['currency_code'] ?: Currency::getBaseCode()), $low['selling_price'], $svcId]
                 );
             }
 
@@ -1745,7 +1785,13 @@ class OtpProviderImporter
             $byCountry[$provCountry][] = $m;
         }
 
-        $adapter = OtpProviderFactory::make($provider);
+        try {
+            $adapter = OtpProviderFactory::make($provider);
+        } catch (Throwable $e) {
+            $err = 'Provider adapter error: ' . ProviderErrorHandler::redact($e->getMessage());
+            ProviderErrorHandler::recordProviderError('otp', $providerId, $err, false);
+            return ['ok' => false, 'error' => $err];
+        }
         $report = [
             'ok'                        => true,
             'mode'                      => 'sync_availability',

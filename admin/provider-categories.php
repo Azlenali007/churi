@@ -6,6 +6,12 @@ CategoryMapper::ensureSchema();
 $ajaxAction = (string)($_REQUEST['ajax_action'] ?? '');
 
 if ($ajaxAction !== '') {
+    ProviderErrorHandler::startAjaxGuard([
+        'scope'    => 'smm',
+        'endpoint' => '/admin/provider-categories.php',
+        'action'   => $ajaxAction,
+        'admin_id' => (int)($admin['id'] ?? 0),
+    ]);
     try {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             CSRF::requireValid();
@@ -22,7 +28,7 @@ if ($ajaxAction !== '') {
                 Helpers::jsonResponse(['ok' => false, 'error' => 'Please select a valid provider.'], 404);
             }
             $res = CategoryMapper::fetchAndCacheCategories($provider, (int)$admin['id']);
-            Helpers::jsonResponse($res, $res['ok'] ? 200 : 400);
+            Helpers::jsonResponse($res, 200);
         }
 
     if ($ajaxAction === 'query_categories') {
@@ -85,14 +91,19 @@ if ($ajaxAction !== '') {
 
         Helpers::jsonResponse(['ok' => false, 'error' => 'Unknown action.'], 400);
     } catch (Throwable $e) {
-        Logger::errorFile('admin/provider-categories.php AJAX error (' . $ajaxAction . '): ' . $e->getMessage());
-        Logger::workflowLog('provider_category_import', 'AJAX fatal exception', [
+        $handled = ProviderErrorHandler::handleException($e, [
+            'scope'       => 'smm',
+            'endpoint'    => '/admin/provider-categories.php',
             'action'      => $ajaxAction,
             'provider_id' => (int)($_REQUEST['provider_id'] ?? 0),
             'admin_id'    => (int)($admin['id'] ?? 0),
-            'error'       => $e->getMessage(),
         ]);
-        Helpers::jsonResponse(['ok' => false, 'error' => 'Server error while processing provider category request. Please check logs.'], 500);
+        Helpers::jsonResponse([
+            'ok'             => false,
+            'error'          => $handled['error'],
+            'error_code'     => $handled['error_code'],
+            'error_category' => $handled['error_category'],
+        ], $handled['http_status']);
     }
 }
 

@@ -183,7 +183,7 @@ require __DIR__ . '/includes/header.php';
             <div>
                 <h3 class="text-sm font-extrabold text-slate-900">Import Countries From Provider</h3>
                 <p class="text-xs text-slate-500 mt-1">
-                    Discovers supported countries from live 5SIM <code class="font-mono text-[11px] bg-purple-50 text-purple-700 px-1 rounded">getPrices</code> (or custom provider API), saves names/flags/dial codes, updates existing records without duplicates, and processes large lists in batches.
+                    Discovers supported countries from your selected OTP provider API (Custom REST/JSON, Custom PHP, or optional 5SIM), saves names/flags/dial codes, updates existing records without duplicates, and processes large lists in batches.
                 </p>
             </div>
 
@@ -380,7 +380,7 @@ function otpCountryImporter() {
         },
 
         async startCountryImport() {
-            if (!this.providerId) return;
+            if (!this.providerId || this.running) return;
             this.running = true;
             this.errorMessage = '';
             this.report = null;
@@ -388,30 +388,28 @@ function otpCountryImporter() {
             this.stageLabel = 'Fetching Countries...';
             this.job = { id: '...', status: 'fetching_countries', stage_message: 'Fetching Countries', processed_records: 0, total_records: 0, progress_percent: 5 };
 
-            const start = await this.postApi({
-                action: 'start_import_job',
-                provider_id: this.providerId,
-                job_type: 'countries',
-                mode: 'import_countries',
-                link_services: this.linkServices ? 1 : 0,
-                batch_size: 100,
-            });
-
-            if (!start.ok) {
-                this.running = false;
-                this.job = start.job || start.active_job || null;
-                this.errorMessage = start.error || 'Could not start country import.';
-                return;
-            }
-
-            this.job = start.job;
-            if (start.done) {
-                this.running = false;
-                this.report = start.job;
-                return;
-            }
-
             try {
+                const start = await this.postApi({
+                    action: 'start_import_job',
+                    provider_id: this.providerId,
+                    job_type: 'countries',
+                    mode: 'import_countries',
+                    link_services: this.linkServices ? 1 : 0,
+                    batch_size: 100,
+                });
+
+                if (!start.ok) {
+                    this.job = start.job || start.active_job || null;
+                    this.errorMessage = start.error || 'Could not start country import.';
+                    return;
+                }
+
+                this.job = start.job;
+                if (start.done) {
+                    this.report = start.job;
+                    return;
+                }
+
                 let done = false;
                 let guard = 0;
                 while (!done && !this.abortRequested && guard < 300) {

@@ -7,112 +7,169 @@ $importReport = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     CSRF::requireValid();
-    $action = $_POST['action'] ?? '';
+    $action = (string)($_POST['action'] ?? '');
 
-    if ($action === 'save_provider') {
-        $id = (int)($_POST['id'] ?? 0);
-        $name = Validator::str($_POST['name'] ?? '', 120);
-        $apiUrl = Validator::url($_POST['api_url'] ?? '');
-        $rawKey = trim((string)($_POST['api_key'] ?? ''));
-        $curr = strtoupper(Validator::str($_POST['currency_code'] ?? Currency::getBaseCode(), 10));
-        $rateMode = ($_POST['rate_mode'] ?? 'auto') === 'manual' ? 'manual' : 'auto';
-        $exRate = Currency::normalize((string)($_POST['exchange_rate'] ?? '1.0'), 6);
-        if ($rateMode === 'auto') {
-            $provCurrRow = Currency::getCurrency($curr);
-            if ($provCurrRow && Currency::cmp((string)$provCurrRow['exchange_rate'], '0', 6) > 0) {
-                $exRate = Currency::div('1', (string)$provCurrRow['exchange_rate'], 6);
-            } else {
-                $exRate = '1.000000';
+    try {
+        if ($action === 'save_provider') {
+            $id = (int)($_POST['id'] ?? 0);
+            $name = Validator::str($_POST['name'] ?? '', 120);
+            $apiUrl = Validator::url($_POST['api_url'] ?? '');
+            $rawKey = trim((string)($_POST['api_key'] ?? ''));
+            $curr = strtoupper(Validator::str($_POST['currency_code'] ?? Currency::getBaseCode(), 10)) ?: Currency::getBaseCode();
+            $rateMode = ($_POST['rate_mode'] ?? 'auto') === 'manual' ? 'manual' : 'auto';
+            $exRate = Currency::normalize((string)($_POST['exchange_rate'] ?? '1.0'), 6);
+            if ($rateMode === 'auto') {
+                $provCurrRow = Currency::getCurrency($curr);
+                if ($provCurrRow && Currency::cmp((string)$provCurrRow['exchange_rate'], '0', 6) > 0) {
+                    $exRate = Currency::div('1', (string)$provCurrRow['exchange_rate'], 6);
+                } else {
+                    $exRate = '1.000000';
+                }
             }
-        }
-        $margin = Currency::normalize((string)($_POST['default_profit_margin'] ?? '30.00'), 2);
-        $status = ($_POST['status'] ?? 'active') === 'inactive' ? 'inactive' : 'active';
+            $margin = Currency::normalize((string)($_POST['default_profit_margin'] ?? '30.00'), 2);
+            $status = ($_POST['status'] ?? 'active') === 'inactive' ? 'inactive' : 'active';
 
-        if ($name === '' || !$apiUrl) {
-            Helpers::setFlash('error', 'Valid provider name and HTTPS/HTTP API URL are required.');
-        } elseif ($id > 0) {
-            if ($rawKey !== '') {
-                Database::execute(
-                    "UPDATE providers SET name=?, api_url=?, api_key_enc=?, currency_code=?, exchange_rate=?, rate_mode=?, default_profit_margin=?, status=? WHERE id=?",
-                    [$name, $apiUrl, Helpers::encryptSecret($rawKey), $curr, $exRate, $rateMode, $margin, $status, $id]
-                );
+            if ($name === '' || !$apiUrl) {
+                Helpers::setFlash('error', 'Valid provider name and HTTPS/HTTP API URL are required.');
             } else {
-                Database::execute(
-                    "UPDATE providers SET name=?, api_url=?, currency_code=?, exchange_rate=?, rate_mode=?, default_profit_margin=?, status=? WHERE id=?",
-                    [$name, $apiUrl, $curr, $exRate, $rateMode, $margin, $status, $id]
-                );
+                $urlErr = OtpHttpClient::validateUrl($apiUrl);
+                if ($urlErr !== null) {
+                    Helpers::setFlash('error', $urlErr);
+                } elseif ($id > 0) {
+                    if ($rawKey !== '') {
+                        Database::execute(
+                            "UPDATE providers SET name=?, api_url=?, api_key_enc=?, currency_code=?, exchange_rate=?, rate_mode=?, default_profit_margin=?, status=? WHERE id=?",
+                            [$name, $apiUrl, Helpers::encryptSecret($rawKey), $curr, $exRate, $rateMode, $margin, $status, $id]
+                        );
+                    } else {
+                        Database::execute(
+                            "UPDATE providers SET name=?, api_url=?, currency_code=?, exchange_rate=?, rate_mode=?, default_profit_margin=?, status=? WHERE id=?",
+                            [$name, $apiUrl, $curr, $exRate, $rateMode, $margin, $status, $id]
+                        );
+                    }
+                    Logger::activity('admin', (int)$admin['id'], 'smm_provider.save', 'provider', (string)$id, 'Updated SMM provider ' . $name);
+                    Helpers::setFlash('success', 'Provider updated.');
+                } else {
+                    if ($rawKey === '') {
+                        Helpers::setFlash('error', 'API Key is required for a new provider.');
+                    } else {
+                        $newId = Database::insert(
+                            "INSERT INTO providers (name, api_url, api_key_enc, currency_code, exchange_rate, rate_mode, default_profit_margin, status)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                            [$name, $apiUrl, Helpers::encryptSecret($rawKey), $curr, $exRate, $rateMode, $margin, $status]
+                        );
+                        Logger::activity('admin', (int)$admin['id'], 'smm_provider.save', 'provider', (string)$newId, 'Added SMM provider ' . $name);
+                        Helpers::setFlash('success', 'Provider added.');
+                    }
+                }
             }
-            Helpers::setFlash('success', 'Provider updated.');
-        } else {
-            if ($rawKey === '') {
-                Helpers::setFlash('error', 'API Key is required for a new provider.');
+            Helpers::redirect('/admin/providers.php');
+        } elseif ($action === 'toggle_status') {
+            $pid = (int)($_POST['provider_id'] ?? 0);
+            $prov = Database::fetch("SELECT id, name, status FROM providers WHERE id = ? LIMIT 1", [$pid]);
+            if (!$prov) {
+                Helpers::setFlash('error', 'Provider not found.');
             } else {
-                Database::insert(
-                    "INSERT INTO providers (name, api_url, api_key_enc, currency_code, exchange_rate, rate_mode, default_profit_margin, status)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    [$name, $apiUrl, Helpers::encryptSecret($rawKey), $curr, $exRate, $rateMode, $margin, $status]
-                );
-                Helpers::setFlash('success', 'Provider added.');
+                $next = $prov['status'] === 'active' ? 'inactive' : 'active';
+                Database::execute("UPDATE providers SET status = ? WHERE id = ?", [$next, $pid]);
+                Logger::activity('admin', (int)$admin['id'], 'smm_provider.toggle', 'provider', (string)$pid, 'Set SMM provider status to ' . $next);
+                Helpers::setFlash('success', $prov['name'] . ' status updated to ' . ucfirst($next) . '.');
             }
-        }
-        Helpers::redirect('/admin/providers.php');
-    } elseif ($action === 'test_balance') {
-        $pid = (int)($_POST['provider_id'] ?? 0);
-        $prov = Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$pid]);
-        if ($prov) {
-            $res = ProviderAPI::getBalance($prov);
-            if ($res['ok']) {
-                Helpers::setFlash('success', $prov['name'] . ' connected! Balance: ' . ($res['currency'] ?? $prov['currency_code']) . ' ' . ($res['balance'] ?? '0'));
+            Helpers::redirect('/admin/providers.php');
+        } elseif ($action === 'test_balance') {
+            $pid = (int)($_POST['provider_id'] ?? 0);
+            $prov = Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$pid]);
+            if (!$prov) {
+                Helpers::setFlash('error', 'Provider not found.');
             } else {
-                Helpers::setFlash('error', 'Connection test failed: ' . ($res['error'] ?? 'Unknown error'));
+                $res = ProviderAPI::testConnection($prov);
+                if (!empty($res['ok'])) {
+                    $ms = isset($res['response_time_ms']) ? ' (' . (int)$res['response_time_ms'] . ' ms)' : '';
+                    Helpers::setFlash('success', $prov['name'] . ' connected! Balance: ' . ($res['currency'] ?? $prov['currency_code']) . ' ' . ($res['balance'] ?? '0') . $ms);
+                } else {
+                    Helpers::setFlash('error', 'Connection test failed: ' . ($res['error'] ?? 'Unknown error'));
+                }
             }
-        }
-        Helpers::redirect('/admin/providers.php');
-    } elseif ($action === 'import_services') {
-        $pid = (int)($_POST['provider_id'] ?? 0);
-        $dupMode = ($_POST['duplicate_mode'] ?? 'update') === 'skip' ? 'skip' : 'update';
-        $marginOverride = trim((string)($_POST['margin_override'] ?? ''));
-        $fallbackCatId = (int)($_POST['fallback_category_id'] ?? 1);
+            Helpers::redirect('/admin/providers.php');
+        } elseif ($action === 'import_services') {
+            $pid = (int)($_POST['provider_id'] ?? 0);
+            $dupMode = ($_POST['duplicate_mode'] ?? 'update') === 'skip' ? 'skip' : 'update';
+            $marginOverride = trim((string)($_POST['margin_override'] ?? ''));
+            $fallbackCatId = (int)($_POST['fallback_category_id'] ?? 1);
 
-        $prov = Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$pid]);
-        if ($prov) {
-            $res = CategoryMapper::importFromProvider(
-                $prov,
-                $dupMode,
-                $marginOverride !== '' ? $marginOverride : null,
-                $fallbackCatId
-            );
-            if ($res['ok']) {
-                $_SESSION['_provider_import_report'] = ['provider' => $prov['name'], 'stats' => $res['stats']];
-                Helpers::setFlash('success', 'Provider import completed for ' . $prov['name'] . '!');
+            $prov = Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$pid]);
+            if (!$prov) {
+                Helpers::setFlash('error', 'Provider not found.');
             } else {
-                Helpers::setFlash('error', 'Import failed: ' . ($res['error'] ?? 'Unknown error'));
+                $res = CategoryMapper::importFromProvider(
+                    $prov,
+                    $dupMode,
+                    $marginOverride !== '' ? $marginOverride : null,
+                    $fallbackCatId
+                );
+                if (!empty($res['ok'])) {
+                    $_SESSION['_provider_import_report'] = ['provider' => $prov['name'], 'stats' => $res['stats']];
+                    Helpers::setFlash('success', 'Provider import completed for ' . $prov['name'] . '!');
+                } else {
+                    Helpers::setFlash('error', 'Import failed: ' . ($res['error'] ?? 'Unknown error'));
+                }
             }
-        }
-        Helpers::redirect('/admin/providers.php');
-    } elseif ($action === 'recalculate_prices') {
-        $pid = (int)($_POST['provider_id'] ?? 0);
-        $prov = Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$pid]);
-        if ($prov) {
-            $svcs = Database::fetchAll("SELECT id, provider_rate, provider_currency FROM services WHERE provider_id = ?", [$pid]);
-            $count = 0;
-            $provCurr = strtoupper(trim((string)($prov['currency_code'] ?: Currency::getBaseCode())));
-            $margin = (string)$prov['default_profit_margin'];
-            $rateMode = (string)($prov['rate_mode'] ?? 'auto');
-            $exRate = (string)$prov['exchange_rate'];
-            foreach ($svcs as $s) {
-                if (Currency::cmp((string)$s['provider_rate'], '0', 4) <= 0) continue;
-                $calc = Currency::calculateProviderToBase((string)$s['provider_rate'], (string)($s['provider_currency'] ?: $provCurr), $margin, $rateMode, $exRate);
-                Database::execute("UPDATE services SET rate = ?, provider_currency = ? WHERE id = ?", [$calc['selling_rate_base'], $provCurr, $s['id']]);
-                $count++;
+            Helpers::redirect('/admin/providers.php');
+        } elseif ($action === 'recalculate_prices') {
+            $pid = (int)($_POST['provider_id'] ?? 0);
+            $prov = Database::fetch("SELECT * FROM providers WHERE id = ? LIMIT 1", [$pid]);
+            if (!$prov) {
+                Helpers::setFlash('error', 'Provider not found.');
+            } else {
+                $svcs = Database::fetchAll("SELECT id, provider_rate, provider_currency FROM services WHERE provider_id = ?", [$pid]);
+                $count = 0;
+                $provCurr = strtoupper(trim((string)($prov['currency_code'] ?: Currency::getBaseCode())));
+                $margin = (string)$prov['default_profit_margin'];
+                $rateMode = (string)($prov['rate_mode'] ?? 'auto');
+                $exRate = (string)$prov['exchange_rate'];
+                foreach ($svcs as $s) {
+                    if (Currency::cmp((string)$s['provider_rate'], '0', 4) <= 0) continue;
+                    $calc = Currency::calculateProviderToBase((string)$s['provider_rate'], (string)($s['provider_currency'] ?: $provCurr), $margin, $rateMode, $exRate);
+                    Database::execute("UPDATE services SET rate = ?, provider_currency = ? WHERE id = ?", [$calc['selling_rate_base'], $provCurr, $s['id']]);
+                    $count++;
+                }
+                Helpers::setFlash('success', "Recalculated selling rates in " . Currency::getBaseCode() . " for {$count} service(s) from {$prov['name']}.");
             }
-            Helpers::setFlash('success', "Recalculated selling rates in " . Currency::getBaseCode() . " for {$count} service(s) from {$prov['name']}.");
+            Helpers::redirect('/admin/providers.php');
+        } elseif ($action === 'delete_provider') {
+            $pid = (int)($_POST['provider_id'] ?? 0);
+            $prov = Database::fetch("SELECT id, name FROM providers WHERE id = ? LIMIT 1", [$pid]);
+            if (!$prov) {
+                Helpers::setFlash('error', 'Provider not found.');
+            } else {
+                $orderCount = (int)Database::fetchColumn("SELECT COUNT(*) FROM orders WHERE provider_id = ?", [$pid]);
+                if ($orderCount > 0) {
+                    Helpers::setFlash('error', "Cannot delete provider with {$orderCount} order record(s). Disable it instead to preserve order history.");
+                } else {
+                    Database::beginTransaction();
+                    try {
+                        Database::execute("UPDATE services SET provider_id = NULL WHERE provider_id = ?", [$pid]);
+                        Database::execute("DELETE FROM provider_service_mappings WHERE provider_id = ?", [$pid]);
+                        Database::execute("DELETE FROM providers WHERE id = ?", [$pid]);
+                        Database::commit();
+                    } catch (Throwable $txErr) {
+                        Database::rollBack();
+                        throw $txErr;
+                    }
+                    Logger::activity('admin', (int)$admin['id'], 'smm_provider.delete', 'provider', (string)$pid, 'Deleted SMM provider ' . $prov['name']);
+                    Helpers::setFlash('success', 'Provider "' . $prov['name'] . '" deleted.');
+                }
+            }
+            Helpers::redirect('/admin/providers.php');
         }
-        Helpers::redirect('/admin/providers.php');
-    } elseif ($action === 'delete_provider') {
-        $pid = (int)($_POST['provider_id'] ?? 0);
-        Database::execute("DELETE FROM providers WHERE id = ?", [$pid]);
-        Helpers::setFlash('success', 'Provider deleted.');
+    } catch (Throwable $e) {
+        $handled = ProviderErrorHandler::handleException($e, [
+            'scope'       => 'smm',
+            'action'      => $action,
+            'provider_id' => (int)($_POST['provider_id'] ?? $_POST['id'] ?? 0),
+            'admin_id'    => (int)$admin['id'],
+        ]);
+        Helpers::setFlash('error', $handled['error']);
         Helpers::redirect('/admin/providers.php');
     }
 }
@@ -122,7 +179,14 @@ if (!empty($_SESSION['_provider_import_report'])) {
     unset($_SESSION['_provider_import_report']);
 }
 
-$providers = Database::fetchAll("SELECT * FROM providers ORDER BY id DESC");
+$providers = Database::fetchAll(
+    "SELECT p.*,
+            (SELECT COUNT(*) FROM services s WHERE s.provider_id = p.id) AS services_count,
+            (SELECT COUNT(*) FROM services s WHERE s.provider_id = p.id AND s.status = 'active') AS active_services_count,
+            (SELECT COUNT(*) FROM orders o WHERE o.provider_id = p.id) AS orders_count
+     FROM providers p
+     ORDER BY p.id DESC"
+);
 $categories = Database::fetchAll("SELECT id, name FROM categories ORDER BY sort_order ASC, id ASC");
 $mappings = Database::fetchAll(
     "SELECT psm.*, p.name AS provider_name, s.name AS local_service_name, s.rate AS local_rate, c.name AS local_category_name
@@ -162,7 +226,7 @@ require __DIR__ . '/includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6" x-data="{ editProv: null, importProv: null }">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6" x-data="{ editProv: null, importProv: null, detailsProv: null }">
     <!-- Add / Edit Provider -->
     <div class="lg:col-span-5 smm-card rounded-3xl p-6">
         <h2 class="text-base font-extrabold text-slate-900 mb-4" x-text="editProv ? 'Edit Provider' : 'Add Upstream SMM Provider'"></h2>
@@ -253,11 +317,30 @@ require __DIR__ . '/includes/header.php';
                     $provCurrCode = strtoupper(trim((string)($p['currency_code'] ?: Currency::getBaseCode())));
                     $provRateMode = (string)($p['rate_mode'] ?? 'auto');
                     $effInfo = Currency::calculateProviderToBase('1.0000', $provCurrCode, '0', $provRateMode, (string)$p['exchange_rate']);
+                    $safeProv = [
+                        'id'                    => (int)$p['id'],
+                        'name'                  => (string)$p['name'],
+                        'api_url'               => (string)$p['api_url'],
+                        'has_api_key'           => !empty($p['api_key_enc']),
+                        'currency_code'         => $provCurrCode,
+                        'exchange_rate'         => (string)$p['exchange_rate'],
+                        'rate_mode'             => $provRateMode,
+                        'default_profit_margin' => (string)$p['default_profit_margin'],
+                        'balance'               => (string)($p['balance'] ?? '0.0000'),
+                        'last_balance_check'    => $p['last_balance_check'] ?? null,
+                        'last_sync_at'          => $p['last_sync_at'] ?? null,
+                        'last_error'            => $p['last_error'] ?? null,
+                        'status'                => (string)$p['status'],
+                        'services_count'        => (int)($p['services_count'] ?? 0),
+                        'active_services_count' => (int)($p['active_services_count'] ?? 0),
+                        'orders_count'          => (int)($p['orders_count'] ?? 0),
+                    ];
+                    $safeProvJson = json_encode($safeProv, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE);
                     ?>
                     <div class="grid grid-cols-3 gap-2 text-xs mb-3">
                         <div>Balance: <strong><?= Currency::formatRaw((string)$p['balance'], $provCurrCode, 2, true) ?></strong></div>
                         <div>Conv: <strong>1 <?= Validator::e($provCurrCode) ?> = <?= Validator::e($effInfo['effective_exchange_rate']) ?> <?= Validator::e($baseCode) ?></strong> <span class="text-[10px] uppercase text-purple-600 font-bold">(<?= Validator::e($provRateMode) ?>)</span></div>
-                        <div>Margin: <strong><?= Validator::e((string)$p['default_profit_margin']) ?>%</strong></div>
+                        <div>Margin: <strong><?= Validator::e((string)$p['default_profit_margin']) ?>%</strong> &middot; <span class="text-slate-500"><?= (int)($p['services_count'] ?? 0) ?> svcs</span></div>
                     </div>
                     <?php if ($p['last_error']): ?>
                         <div class="mb-3 p-2 rounded-lg bg-rose-50 text-rose-700 text-[11px] font-semibold">Last API Error: <?= Validator::e($p['last_error']) ?></div>
@@ -283,8 +366,17 @@ require __DIR__ . '/includes/header.php';
                             <input type="hidden" name="provider_id" value="<?= (int)$p['id'] ?>">
                             <button type="submit" class="px-3 py-1.5 rounded-xl bg-indigo-100 text-indigo-800 font-bold">Recalculate Rates</button>
                         </form>
-                        <button type="button" @click="editProv = <?= Validator::e(json_encode($p)) ?>" class="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-800 font-bold">Edit</button>
-                        <form method="POST" onsubmit="return confirm('Delete this provider?')">
+                        <button type="button" @click="detailsProv = <?= Validator::e($safeProvJson) ?>" class="px-3 py-1.5 rounded-xl bg-sky-50 text-sky-800 border border-sky-200 font-bold">Details</button>
+                        <button type="button" @click="editProv = <?= Validator::e($safeProvJson) ?>" class="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-800 font-bold">Edit</button>
+                        <form method="POST">
+                            <?= CSRF::field() ?>
+                            <input type="hidden" name="action" value="toggle_status">
+                            <input type="hidden" name="provider_id" value="<?= (int)$p['id'] ?>">
+                            <button type="submit" class="px-3 py-1.5 rounded-xl font-bold <?= $p['status'] === 'active' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700' ?>">
+                                <?= $p['status'] === 'active' ? 'Disable' : 'Enable' ?>
+                            </button>
+                        </form>
+                        <form method="POST" onsubmit="return confirm('Delete this provider? (Blocked if orders exist)')">
                             <?= CSRF::field() ?>
                             <input type="hidden" name="action" value="delete_provider">
                             <input type="hidden" name="provider_id" value="<?= (int)$p['id'] ?>">
@@ -328,6 +420,48 @@ require __DIR__ . '/includes/header.php';
                     <button type="submit" class="px-5 py-2 rounded-xl bg-purple-600 text-white font-bold">Start Auto-Import &rarr;</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- SMM Provider Details Modal (Sanitized - Never Exposes Secrets) -->
+    <div x-show="detailsProv" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div @click.away="detailsProv = null" class="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-purple-100 space-y-4 text-xs">
+            <div class="flex items-start justify-between gap-2">
+                <div>
+                    <h3 class="text-base font-extrabold text-slate-900" x-text="detailsProv?.name"></h3>
+                    <div class="font-mono text-[11px] text-slate-500 break-all mt-0.5" x-text="detailsProv?.api_url"></div>
+                </div>
+                <button type="button" @click="detailsProv = null" class="text-slate-400 hover:text-slate-700 font-extrabold text-lg">&times;</button>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div class="p-3 rounded-2xl bg-[#FAF8FF] border border-purple-100">
+                    <div class="text-[10px] font-bold uppercase text-slate-400">Balance</div>
+                    <div class="font-mono font-extrabold text-purple-800 mt-0.5" x-text="(detailsProv?.balance || '0.00') + ' ' + (detailsProv?.currency_code || '')"></div>
+                </div>
+                <div class="p-3 rounded-2xl bg-[#FAF8FF] border border-purple-100">
+                    <div class="text-[10px] font-bold uppercase text-slate-400">Services</div>
+                    <div class="font-extrabold text-slate-900 mt-0.5"><span x-text="detailsProv?.services_count || 0"></span> (<span x-text="detailsProv?.active_services_count || 0"></span> active)</div>
+                </div>
+                <div class="p-3 rounded-2xl bg-[#FAF8FF] border border-purple-100">
+                    <div class="text-[10px] font-bold uppercase text-slate-400">Orders</div>
+                    <div class="font-extrabold text-slate-900 mt-0.5" x-text="detailsProv?.orders_count || 0"></div>
+                </div>
+            </div>
+            <div class="space-y-1.5 text-slate-600">
+                <div><strong>Status:</strong> <span class="uppercase font-bold" x-text="detailsProv?.status"></span> &middot; <strong>API Key:</strong> <span class="font-bold" :class="detailsProv?.has_api_key ? 'text-emerald-700' : 'text-rose-600'" x-text="detailsProv?.has_api_key ? 'Encrypted (Stored)' : 'Missing'"></span></div>
+                <div><strong>Rate Mode:</strong> <span class="uppercase" x-text="detailsProv?.rate_mode"></span> &middot; <strong>Manual FX:</strong> <span class="font-mono" x-text="detailsProv?.exchange_rate"></span> &middot; <strong>Margin:</strong> <span x-text="detailsProv?.default_profit_margin + '%'"></span></div>
+                <div><strong>Last Balance Check:</strong> <span x-text="detailsProv?.last_balance_check || 'Never'"></span></div>
+                <div><strong>Last Sync:</strong> <span x-text="detailsProv?.last_sync_at || 'Never'"></span></div>
+            </div>
+            <template x-if="detailsProv?.last_error">
+                <div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
+                    <strong class="uppercase text-[10px]">Last Error:</strong>
+                    <span x-text="detailsProv?.last_error"></span>
+                </div>
+            </template>
+            <div class="flex justify-end">
+                <button type="button" @click="detailsProv = null" class="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold">Close</button>
+            </div>
         </div>
     </div>
 </div>

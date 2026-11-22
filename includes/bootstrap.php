@@ -10,6 +10,7 @@ require_once __DIR__ . '/../core/Validator.php';
 require_once __DIR__ . '/../core/Currency.php';
 require_once __DIR__ . '/../core/ExchangeRateService.php';
 require_once __DIR__ . '/../core/Logger.php';
+require_once __DIR__ . '/../core/ProviderErrorHandler.php';
 require_once __DIR__ . '/../core/Helpers.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Wallet.php';
@@ -36,16 +37,49 @@ set_error_handler(function (int $severity, string $message, string $file, int $l
     if (!(error_reporting() & $severity)) {
         return false;
     }
-    Logger::errorFile("PHP Error [$severity]: $message in $file:$line");
+    Logger::errorFile("PHP Error [$severity]: " . ProviderErrorHandler::redact($message) . " in $file:$line");
     return false;
 });
 
 set_exception_handler(function (Throwable $e): void {
-    Logger::errorFile('Uncaught Exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
-    http_response_code(500);
-    if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/api/')) {
-        header('Content-Type: application/json');
-        echo json_encode(['ok' => false, 'error' => 'An internal server error occurred. Please check system logs.']);
+    $safeMsg = class_exists('ProviderErrorHandler')
+        ? ProviderErrorHandler::redact($e->getMessage())
+        : $e->getMessage();
+    Logger::errorFile('Uncaught Exception (' . get_class($e) . '): ' . $safeMsg . ' in ' . $e->getFile() . ':' . $e->getLine());
+
+    if (PHP_SAPI === 'cli') {
+        fwrite(STDERR, "Uncaught Exception: {$safeMsg}\n");
+        exit(1);
+    }
+
+    while (ob_get_level() > 0) {
+        if (!@ob_end_clean()) {
+            break;
+        }
+    }
+
+    $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
+    $isAjax = (
+        str_contains($uri, '/api/')
+        || (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower((string)$_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+        || (isset($_SERVER['HTTP_ACCEPT']) && str_contains(strtolower((string)$_SERVER['HTTP_ACCEPT']), 'application/json'))
+        || isset($_REQUEST['ajax_action'])
+    );
+
+    if (!headers_sent()) {
+        http_response_code(500);
+    }
+    if ($isAjax) {
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store, no-cache, must-revalidate');
+        }
+        echo json_encode([
+            'ok'             => false,
+            'error'          => 'An internal server error occurred. Please check system logs.',
+            'error_code'     => 'INTERNAL_ERROR',
+            'error_category' => 'internal',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
     }
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Service Error</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-slate-50 min-h-screen flex items-center justify-center p-6"><div class="max-w-md w-full bg-white rounded-2xl shadow-lg border border-purple-100 p-8 text-center"><div class="w-12 h-12 mx-auto mb-4 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"/></svg></div><h1 class="text-xl font-bold text-slate-900 mb-2">Something went wrong</h1><p class="text-sm text-slate-600 mb-6">An unexpected server error occurred. The incident has been logged securely.</p><a href="/" class="inline-flex items-center px-5 py-2.5 rounded-xl bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700">Return Home</a></div></body></html>';

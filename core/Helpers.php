@@ -46,6 +46,11 @@ class Helpers
         return $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
     }
 
+    public static function ip(): string
+    {
+        return self::clientIp();
+    }
+
     public static function redirect(string $url): void
     {
         header('Location: ' . $url);
@@ -71,9 +76,21 @@ class Helpers
 
     public static function jsonResponse(array $payload, int $status = 200): void
     {
-        http_response_code($status);
-        header('Content-Type: application/json; charset=utf-8');
-        echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        while (ob_get_level() > 0) {
+            if (!@ob_end_clean()) {
+                break;
+            }
+        }
+        if (!headers_sent()) {
+            http_response_code($status);
+            header('Content-Type: application/json; charset=utf-8');
+            header('Cache-Control: no-store, no-cache, must-revalidate');
+        }
+        $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            $json = '{"ok":false,"error":"Failed to encode JSON response."}';
+        }
+        echo $json;
         exit;
     }
 

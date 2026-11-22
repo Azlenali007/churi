@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $adapterType = in_array($_POST['adapter_type'] ?? '', ['fivesim', 'custom_json', 'custom_php'], true)
             ? (string)$_POST['adapter_type']
-            : 'fivesim';
+            : 'custom_json';
         $customClass = Validator::str($_POST['custom_adapter_class'] ?? '', 120) ?: null;
 
         $defaultUrl = $adapterType === 'fivesim' ? FiveSimAdapter::DEFAULT_BASE_URL : '';
@@ -104,36 +104,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $timeout = max(5, min(60, (int)($_POST['timeout_seconds'] ?? 20)));
         $pollSec = max(2, min(60, (int)($_POST['polling_interval_seconds'] ?? 5)));
-        $currCode = strtoupper(Validator::str($_POST['currency_code'] ?? ($adapterType === 'fivesim' ? 'RUB' : 'USD'), 10)) ?: 'RUB';
+        $defaultCurr = $adapterType === 'fivesim' ? 'RUB' : Currency::getBaseCode();
+        $currCode = strtoupper(Validator::str($_POST['currency_code'] ?? $defaultCurr, 10)) ?: $defaultCurr;
         $rateMode = (($_POST['rate_mode'] ?? 'auto') === 'manual') ? 'manual' : 'auto';
         $exRate = Currency::normalize((string)($_POST['exchange_rate'] ?? '1.000000'), 6);
         $status = (($_POST['status'] ?? 'active') === 'inactive') ? 'inactive' : 'active';
 
         if ($name === '' || $slug === '' || $baseUrl === '') {
             Helpers::setFlash('error', 'Provider name, slug, and base URL are required.');
-            Helpers::redirect('/admin/otp-providers.php' . ($id > 0 ? '?edit=' . $id : ''));
+            Helpers::redirect('/admin/otp-providers.php' . ($id > 0 ? '?edit=' . $id : '?tab=settings'));
         }
         $urlErr = OtpHttpClient::validateUrl($baseUrl);
         if ($urlErr !== null) {
             Helpers::setFlash('error', $urlErr);
-            Helpers::redirect('/admin/otp-providers.php' . ($id > 0 ? '?edit=' . $id : ''));
+            Helpers::redirect('/admin/otp-providers.php' . ($id > 0 ? '?edit=' . $id : '?tab=settings'));
         }
 
         if ($adapterType === 'custom_php' && ($customClass === null || !preg_match('/^[A-Za-z][A-Za-z0-9_]{2,60}$/', $customClass))) {
             Helpers::setFlash('error', 'Custom PHP Adapter Class must be a valid PHP class name inside /core/otp_adapters/.');
-            Helpers::redirect('/admin/otp-providers.php' . ($id > 0 ? '?edit=' . $id : ''));
+            Helpers::redirect('/admin/otp-providers.php' . ($id > 0 ? '?edit=' . $id : '?tab=settings'));
         }
 
         foreach (['Endpoints' => $endpointsJson, 'Request Parameters' => $paramsJson, 'Response Mapping' => $respMapJson, 'Status Mapping' => $statusMapJson] as $lbl => $jStr) {
             if ($jStr !== '' && json_decode($jStr, true) === null && json_last_error() !== JSON_ERROR_NONE) {
                 Helpers::setFlash('error', $lbl . ' must be valid JSON.');
-                Helpers::redirect('/admin/otp-providers.php' . ($id > 0 ? '?edit=' . $id : ''));
+                Helpers::redirect('/admin/otp-providers.php' . ($id > 0 ? '?edit=' . $id : '?tab=settings'));
             }
         }
 
         try {
             if ($id > 0) {
                 $existing = Database::fetch("SELECT api_key_enc, webhook_secret_enc FROM otp_providers WHERE id = ?", [$id]);
+                if (!$existing) {
+                    Helpers::setFlash('error', 'OTP provider not found.');
+                    Helpers::redirect('/admin/otp-providers.php');
+                }
                 $apiEnc = $apiKeyRaw !== '' ? Helpers::encryptSecret($apiKeyRaw) : ($existing['api_key_enc'] ?? null);
                 $whEnc = $webhookSecretRaw !== '' ? Helpers::encryptSecret($webhookSecretRaw) : ($existing['webhook_secret_enc'] ?? null);
 
@@ -175,18 +180,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             Logger::activity('admin', (int)$admin['id'], 'otp_provider.save', 'otp_provider', $slug, 'Saved OTP provider ' . $name);
         } catch (Throwable $e) {
-            Helpers::setFlash('error', 'Failed to save OTP provider: ' . $e->getMessage());
+            $handled = ProviderErrorHandler::handleException($e, [
+                'scope'    => 'otp',
+                'action'   => 'save_provider',
+                'admin_id' => (int)$admin['id'],
+            ], array_filter([$apiKeyRaw, $webhookSecretRaw]));
+            Helpers::setFlash('error', $handled['error']);
         }
         Helpers::redirect('/admin/otp-providers.php');
     } elseif ($action === 'delete_provider') {
         $id = (int)($_POST['id'] ?? 0);
-        $used = (int)Database::fetchColumn("SELECT COUNT(*) FROM otp_activations WHERE provider_id = ?", [$id]);
-        if ($used > 0) {
-            Helpers::setFlash('error', "Cannot delete provider with {$used} activation record(s). Disable it instead to preserve order history.");
-        } else {
-            Database::execute("DELETE FROM otp_providers WHERE id = ?", [$id]);
-            Logger::activity('admin', (int)$admin['id'], 'otp_provider.delete', 'otp_provider', (string)$id, 'Deleted OTP provider');
-            Helpers::setFlash('success', 'OTP provider deleted.');
+        try {
+            $used = (int)Database::fetchColumn("SELECT COUNT(*) FROM otp_activations WHERE provider_id = ?", [$id]);
+            if ($used > 0) {
+                Helpers::setFlash('error', "Cannot delete provider with {$used} activation record(s). Disable it instead to preserve order history.");
+            } else {
+                Database::beginTransaction();
+                try {
+                    Database::execute("UPDATE otp_services SET provider_id = NULL WHERE provider_id = ?", [$id]);
+                    Database::execute("DELETE FROM otp_providers WHERE id = ?", [$id]);
+                    Database::commit();
+                } catch (Throwable $txErr) {
+                    Database::rollBack();
+                    throw $txErr;
+                }
+                Logger::activity('admin', (int)$admin['id'], 'otp_provider.delete', 'otp_provider', (string)$id, 'Deleted OTP provider');
+                Helpers::setFlash('success', 'OTP provider deleted.');
+            }
+        } catch (Throwable $e) {
+            $handled = ProviderErrorHandler::handleException($e, [
+                'scope'       => 'otp',
+                'action'      => 'delete_provider',
+                'provider_id' => $id,
+                'admin_id'    => (int)$admin['id'],
+            ]);
+            Helpers::setFlash('error', $handled['error']);
         }
         Helpers::redirect('/admin/otp-providers.php');
     }
@@ -209,7 +237,7 @@ $providers = Database::fetchAll(
             (SELECT COUNT(*) FROM otp_service_provider_mappings m WHERE m.provider_id = p.id) AS total_mappings,
             (SELECT COUNT(*) FROM otp_service_provider_mappings m WHERE m.provider_id = p.id AND m.availability_verified = 1 AND m.available_count > 0 AND m.is_available = 1) AS verified_available_mappings
      FROM otp_providers p
-     ORDER BY FIELD(p.adapter_type,'fivesim','custom_json','custom_php'), p.id ASC"
+     ORDER BY FIELD(p.status,'active','inactive'), p.id ASC"
 );
 
 $localCountries = Database::fetchAll("SELECT id, name, iso_code, flag_emoji, default_provider_code FROM otp_countries WHERE status = 'active' ORDER BY name ASC");
@@ -267,7 +295,7 @@ require __DIR__ . '/includes/header.php';
                 </div>
                 <div>
                     <h2 class="text-lg font-extrabold text-slate-900">OTP Provider Management</h2>
-                    <p class="text-xs text-slate-500">Manage 5SIM API1 (<code class="font-mono text-[11px] bg-purple-50 text-purple-700 px-1.5 py-0.5 rounded">api1.5sim.net/stubs/handler_api.php</code>) &amp; custom OTP providers, auto-import services, and sync live stock.</p>
+                    <p class="text-xs text-slate-500">Connect and manage multiple OTP providers (Custom REST/JSON, Custom PHP Adapters, or optional 5SIM API1), auto-import services, and sync live stock.</p>
                 </div>
             </div>
         </div>
@@ -310,7 +338,7 @@ require __DIR__ . '/includes/header.php';
                     <svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                 </div>
                 <h3 class="text-base font-extrabold text-slate-900">No OTP Providers Configured Yet</h3>
-                <p class="text-xs text-slate-500 max-w-md mx-auto">Add the built-in 5SIM API1 provider or a custom OTP provider API to test connectivity, fetch real balances, and automatically import services.</p>
+                <p class="text-xs text-slate-500 max-w-md mx-auto">Add any Custom REST/JSON OTP provider, Custom PHP adapter, or optional 5SIM API1 provider to test connectivity, fetch real balances, and automatically import services.</p>
                 <div class="pt-2">
                     <button type="button" @click="activeTab = 'settings'" class="px-5 py-2.5 rounded-xl bg-purple-600 text-white text-xs font-extrabold shadow hover:bg-purple-700">Configure First OTP Provider</button>
                 </div>
@@ -396,10 +424,12 @@ require __DIR__ . '/includes/header.php';
                         </template>
                     </div>
 
-                    <!-- All 9 Provider Card Actions -->
+                    <!-- Provider Card Actions -->
                     <div class="pt-3 border-t border-purple-100/80 flex flex-wrap items-center gap-1.5 text-[11px]">
                         <button type="button" @click="openImportWorkspace(p.id)"
                                 class="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-extrabold transition">Manage Provider</button>
+                        <button type="button" @click="openProviderDetails(p.id)"
+                                class="px-3 py-1.5 rounded-xl bg-white hover:bg-purple-50 border border-purple-200 text-purple-800 font-bold transition">Details</button>
                         <a :href="'/admin/otp-providers.php?edit=' + p.id"
                            class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition">Edit Settings</a>
                         <button type="button" @click="runQuickAction(p.id, 'test_connection')" :disabled="busyProvider === p.id"
@@ -409,6 +439,10 @@ require __DIR__ . '/includes/header.php';
                         <button type="button" @click="runQuickAction(p.id, 'check_balance')" :disabled="busyProvider === p.id"
                                 class="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold transition">
                             <span x-text="busyProvider === p.id && busyAction === 'check_balance' ? 'Checking...' : 'Check Balance'"></span>
+                        </button>
+                        <button type="button" @click="runQuickAction(p.id, 'refresh_provider')" :disabled="busyProvider === p.id"
+                                class="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 font-bold transition">
+                            <span x-text="busyProvider === p.id && busyAction === 'refresh_provider' ? 'Refreshing...' : 'Refresh'"></span>
                         </button>
                         <button type="button" @click="openImportWorkspace(p.id, true)"
                                 class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition">Import Services</button>
@@ -921,14 +955,14 @@ require __DIR__ . '/includes/header.php';
     </div>
 
     <!-- ====================================================================== -->
-    <!-- TAB 4: ADD / EDIT PROVIDER SETTINGS (5SIM API1 + CUSTOM PROVIDERS)     -->
+    <!-- TAB 4: ADD / EDIT PROVIDER SETTINGS (MULTI-PROVIDER ARCHITECTURE)      -->
     <!-- ====================================================================== -->
     <div x-show="activeTab === 'settings'" x-cloak class="grid lg:grid-cols-12 gap-6">
         <div class="lg:col-span-8 smm-card rounded-3xl p-6"
-             x-data="{ adapterType: '<?= Validator::e($editProv['adapter_type'] ?? 'fivesim') ?>' }">
+             x-data="{ adapterType: '<?= Validator::e($editProv['adapter_type'] ?? 'custom_json') ?>' }">
             <div class="flex items-center justify-between mb-4 pb-3 border-b border-purple-100">
                 <div>
-                    <h3 class="text-base font-extrabold text-slate-900"><?= $editProv ? 'Edit OTP Provider: ' . Validator::e($editProv['name']) : 'Add OTP Provider (5SIM API1 or Custom)' ?></h3>
+                    <h3 class="text-base font-extrabold text-slate-900"><?= $editProv ? 'Edit OTP Provider: ' . Validator::e($editProv['name']) : 'Add OTP Provider' ?></h3>
                     <p class="text-[11px] text-slate-500">Credentials are encrypted with AES-256-GCM server-side and never exposed to the browser.</p>
                 </div>
                 <?php if ($editProv): ?>
@@ -945,35 +979,35 @@ require __DIR__ . '/includes/header.php';
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">Provider Adapter *</label>
                         <select name="adapter_type" x-model="adapterType"
-                                @change="if(adapterType === 'fivesim'){ $refs.baseUrlInput.value = '<?= FiveSimAdapter::DEFAULT_BASE_URL ?>'; $refs.currInput.value = 'RUB'; }"
+                                @change="if(adapterType === 'fivesim'){ if(!$refs.baseUrlInput.value){ $refs.baseUrlInput.value = '<?= FiveSimAdapter::DEFAULT_BASE_URL ?>'; } if($refs.currInput.value === '<?= Validator::e($baseCurrencyCode) ?>'){ $refs.currInput.value = 'RUB'; } } else if($refs.baseUrlInput.value === '<?= FiveSimAdapter::DEFAULT_BASE_URL ?>'){ $refs.baseUrlInput.value = ''; }"
                                 class="w-full px-3 py-2.5 rounded-xl border border-purple-200 font-bold bg-white">
-                            <option value="fivesim">Built-in 5SIM API1 (handler_api.php)</option>
                             <option value="custom_json">Custom OTP Provider (Configurable REST/JSON)</option>
                             <option value="custom_php">Custom PHP Adapter Class (/core/otp_adapters/)</option>
+                            <option value="fivesim">5SIM API1 — Optional Built-in Adapter (handler_api.php)</option>
                         </select>
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">Provider Name *</label>
-                        <input type="text" name="name" required value="<?= Validator::e($editProv['name'] ?? '') ?>" placeholder="5SIM Official" class="w-full px-3 py-2.5 rounded-xl border border-purple-200">
+                        <input type="text" name="name" required value="<?= Validator::e($editProv['name'] ?? '') ?>" placeholder="My OTP Provider" class="w-full px-3 py-2.5 rounded-xl border border-purple-200">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">Slug *</label>
-                        <input type="text" name="slug" value="<?= Validator::e($editProv['slug'] ?? '') ?>" placeholder="5sim" class="w-full px-3 py-2.5 rounded-xl border border-purple-200 font-mono">
+                        <input type="text" name="slug" value="<?= Validator::e($editProv['slug'] ?? '') ?>" placeholder="my-provider" class="w-full px-3 py-2.5 rounded-xl border border-purple-200 font-mono">
                     </div>
                 </div>
 
-                <!-- Built-in 5SIM API1 Notice -->
-                <div x-show="adapterType === 'fivesim'" class="p-3.5 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 space-y-1">
-                    <div class="font-extrabold text-[11px] uppercase">Built-in 5SIM API1 Protocol (Separate from Custom Providers)</div>
-                    <p class="text-[11px] text-purple-800">Uses exact endpoint <code class="font-mono bg-white px-1.5 py-0.5 rounded border border-purple-200">http://api1.5sim.net/stubs/handler_api.php</code> with server-side actions: <code>getBalance</code>, <code>getPrices</code>, <code>getNumbersStatus</code>, <code>getNumber</code>, <code>getStatus</code>, and <code>setStatus</code> (1/3/6/8).</p>
+                <!-- Optional 5SIM API1 Notice -->
+                <div x-show="adapterType === 'fivesim'" x-cloak class="p-3.5 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 space-y-1">
+                    <div class="font-extrabold text-[11px] uppercase">Optional 5SIM API1 Adapter (handler_api.php)</div>
+                    <p class="text-[11px] text-purple-800">Uses endpoint <code class="font-mono bg-white px-1.5 py-0.5 rounded border border-purple-200">http://api1.5sim.net/stubs/handler_api.php</code> with server-side actions: <code>getBalance</code>, <code>getPrices</code>, <code>getNumbersStatus</code>, <code>getNumber</code>, <code>getStatus</code>, and <code>setStatus</code> (1/3/6/8). 5SIM is completely optional and never required for other providers.</p>
                 </div>
 
                 <div class="grid sm:grid-cols-2 gap-3">
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">API Base URL *</label>
                         <input type="url" x-ref="baseUrlInput" name="base_url" required
-                               value="<?= Validator::e($editProv['base_url'] ?? FiveSimAdapter::DEFAULT_BASE_URL) ?>"
-                               placeholder="http://api1.5sim.net/stubs/handler_api.php"
+                               value="<?= Validator::e($editProv['base_url'] ?? '') ?>"
+                               placeholder="https://api.provider.example.com"
                                class="w-full px-3 py-2.5 rounded-xl border border-purple-200 font-mono">
                     </div>
                     <div>
@@ -987,7 +1021,7 @@ require __DIR__ . '/includes/header.php';
                 <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">Currency</label>
-                        <input type="text" x-ref="currInput" name="currency_code" value="<?= Validator::e($editProv['currency_code'] ?? 'RUB') ?>" class="w-full px-3 py-2 rounded-xl border border-purple-200 uppercase font-mono">
+                        <input type="text" x-ref="currInput" name="currency_code" value="<?= Validator::e($editProv['currency_code'] ?? $baseCurrencyCode) ?>" class="w-full px-3 py-2 rounded-xl border border-purple-200 uppercase font-mono">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-600 mb-1">FX Mode</label>
@@ -1136,23 +1170,109 @@ require __DIR__ . '/includes/header.php';
         <!-- Reference Sidebar -->
         <div class="lg:col-span-4 space-y-4">
             <div class="smm-card rounded-3xl p-5 space-y-3 text-xs">
-                <h4 class="text-sm font-extrabold text-slate-900">5SIM API1 Quick Reference</h4>
+                <h4 class="text-sm font-extrabold text-slate-900">Provider Integration Reference</h4>
                 <div class="space-y-2 text-[11px] text-slate-600">
-                    <div><strong class="text-slate-800">Base URL:</strong> <code class="font-mono text-purple-700 break-all">http://api1.5sim.net/stubs/handler_api.php</code></div>
-                    <div><strong class="text-slate-800">Balance:</strong> <code class="font-mono">?action=getBalance&amp;api_key=...</code> &rarr; <code>ACCESS_BALANCE:amt</code></div>
-                    <div><strong class="text-slate-800">Prices:</strong> <code class="font-mono">?action=getPrices&amp;api_key=...</code> (used for auto service import)</div>
-                    <div><strong class="text-slate-800">Availability:</strong> <code class="font-mono">?action=getNumbersStatus&amp;country=...</code></div>
-                    <div><strong class="text-slate-800">Purchase:</strong> <code class="font-mono">?action=getNumber&amp;service=...&amp;operator=...&amp;country=...</code></div>
-                    <div><strong class="text-slate-800">Status:</strong> <code class="font-mono">?action=getStatus&amp;id=...</code></div>
-                    <div><strong class="text-slate-800">Change Status:</strong> <code class="font-mono">?action=setStatus&amp;status=1|3|6|8&amp;id=...</code></div>
+                    <div><strong class="text-slate-800">Custom REST/JSON:</strong> Configure any endpoint path, auth method (Bearer / Header / Query / Body), and dot-path response mapping.</div>
+                    <div><strong class="text-slate-800">Custom PHP Adapter:</strong> Drop a class implementing <code class="font-mono">OtpProviderInterface</code> into <code class="font-mono">/core/otp_adapters/</code> for proprietary protocols.</div>
+                    <div><strong class="text-slate-800">Optional 5SIM API1:</strong> Supported as a built-in optional adapter (<code class="font-mono text-purple-700 break-all">handler_api.php</code>) using <code>getBalance</code>, <code>getPrices</code>, <code>getNumbersStatus</code>, <code>getNumber</code>, <code>getStatus</code>, and <code>setStatus</code>.</div>
                 </div>
             </div>
             <div class="smm-card rounded-3xl p-5 space-y-2.5 text-xs">
                 <h4 class="text-sm font-extrabold text-slate-900">Currency &amp; Snapshot Protection</h4>
                 <p class="text-[11px] text-slate-600 leading-relaxed">
-                    5SIM API1 reports prices in <strong>RUB</strong>. Ensure RUB exchange rate is updated in <a href="/admin/currencies.php" class="text-purple-700 font-bold underline">Currencies &amp; Rates</a> or set a manual FX rate on the provider. Every purchased activation permanently stores its original provider cost, selling price, profit, currency, and FX rate snapshot.
+                    Configure each provider's native currency (e.g., USD, EUR, INR, RUB) and either use automatic exchange rates from <a href="/admin/currencies.php" class="text-purple-700 font-bold underline">Currencies &amp; Rates</a> or a manual FX factor. Every purchased activation permanently stores its original provider cost, selling price, profit, currency, and FX rate snapshot.
                 </p>
             </div>
+        </div>
+    </div>
+
+    <!-- Provider Details Modal (Sanitized - Zero Secret Exposure) -->
+    <div x-show="detailsModal || detailsLoading" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+        <div @click.away="detailsModal = null; detailsLoading = false" class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-purple-100 max-h-[88vh] overflow-y-auto space-y-4 text-xs">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h3 class="text-base font-extrabold text-slate-900" x-text="detailsModal ? detailsModal.provider.name : 'Loading Provider Details...'"></h3>
+                    <div class="text-[11px] font-mono text-slate-500 break-all mt-0.5" x-text="detailsModal?.provider?.base_url || ''"></div>
+                </div>
+                <button type="button" @click="detailsModal = null; detailsLoading = false" class="text-slate-400 hover:text-slate-700 font-extrabold text-lg">&times;</button>
+            </div>
+
+            <template x-if="detailsLoading">
+                <div class="py-10 text-center font-bold text-purple-700">Fetching provider diagnostics...</div>
+            </template>
+
+            <template x-if="!detailsLoading && detailsModal">
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                        <div class="p-3 rounded-2xl bg-[#FAF8FF] border border-purple-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Adapter</div>
+                            <div class="font-extrabold text-slate-900 mt-0.5" x-text="adapterLabel(detailsModal.provider.adapter_type)"></div>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-[#FAF8FF] border border-purple-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Balance</div>
+                            <div class="font-mono font-extrabold text-purple-800 mt-0.5" x-text="detailsModal.provider.balance !== null ? (Number(detailsModal.provider.balance).toFixed(2) + ' ' + detailsModal.provider.currency_code) : 'Not Checked'"></div>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-[#FAF8FF] border border-purple-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Services / Pairs</div>
+                            <div class="font-extrabold text-slate-900 mt-0.5"><span x-text="detailsModal.provider.total_imported_services"></span> / <span x-text="detailsModal.provider.total_mappings"></span></div>
+                        </div>
+                        <div class="p-3 rounded-2xl bg-[#FAF8FF] border border-purple-100">
+                            <div class="text-[10px] font-bold uppercase text-slate-400">Activations</div>
+                            <div class="font-extrabold text-slate-900 mt-0.5" x-text="detailsModal.activations_count || 0"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid sm:grid-cols-2 gap-2.5 p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-[11px] text-slate-600">
+                        <div><strong>Connection:</strong> <span x-text="connectionLabel(detailsModal.provider.connection_status)"></span></div>
+                        <div><strong>API Key:</strong> <span :class="detailsModal.provider.has_api_key ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'" x-text="detailsModal.provider.has_api_key ? 'Encrypted (Stored)' : 'Missing'"></span></div>
+                        <div><strong>Auth / Method:</strong> <span class="font-mono" x-text="(detailsModal.config?.auth_type || '-') + ' / ' + (detailsModal.config?.request_method || 'GET')"></span></div>
+                        <div><strong>Timeout / Poll:</strong> <span x-text="(detailsModal.config?.timeout_seconds || 20) + 's / ' + (detailsModal.config?.polling_interval_seconds || 5) + 's'"></span></div>
+                        <div><strong>FX Mode:</strong> <span class="uppercase" x-text="detailsModal.config?.rate_mode || 'auto'"></span> (<span class="font-mono" x-text="detailsModal.config?.exchange_rate || '1.000000'"></span>)</div>
+                        <div><strong>Last Sync:</strong> <span x-text="formatDate(detailsModal.provider.last_sync_at)"></span></div>
+                    </div>
+
+                    <template x-if="detailsModal.provider.last_error">
+                        <div class="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800">
+                            <strong class="uppercase text-[10px]">Last API Error:</strong>
+                            <span x-text="detailsModal.provider.last_error"></span>
+                        </div>
+                    </template>
+
+                    <div>
+                        <div class="font-extrabold text-slate-800 mb-2">Recent Provider API Logs (Sanitized)</div>
+                        <div class="border border-purple-100 rounded-2xl overflow-hidden max-h-48 overflow-y-auto">
+                            <table class="w-full text-left text-[11px]">
+                                <thead class="bg-[#FAF8FF] text-slate-500 uppercase text-[10px]">
+                                    <tr>
+                                        <th class="px-3 py-2">Action</th>
+                                        <th class="px-3 py-2">Status</th>
+                                        <th class="px-3 py-2">Time</th>
+                                        <th class="px-3 py-2">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-purple-50">
+                                    <template x-for="lg in (detailsModal.recent_logs || [])" :key="lg.id">
+                                        <tr>
+                                            <td class="px-3 py-2 font-mono text-purple-700" x-text="lg.action"></td>
+                                            <td class="px-3 py-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="lg.status === 'ok' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'" x-text="lg.status.toUpperCase() + ' · ' + lg.http_code"></span></td>
+                                            <td class="px-3 py-2 font-mono text-slate-500" x-text="(lg.response_time_ms ?? 0) + ' ms'"></td>
+                                            <td class="px-3 py-2 truncate max-w-[220px] font-mono text-[10px]" x-text="lg.error_message || lg.created_at"></td>
+                                        </tr>
+                                    </template>
+                                    <tr x-show="!detailsModal.recent_logs || detailsModal.recent_logs.length === 0">
+                                        <td colspan="4" class="px-3 py-4 text-center text-slate-400">No recent API calls logged for this provider.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2">
+                        <a :href="'/admin/otp-providers.php?edit=' + detailsModal.provider.id" class="px-4 py-2 rounded-xl bg-purple-100 text-purple-800 font-bold">Edit Settings</a>
+                        <button type="button" @click="detailsModal = null" class="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold">Close</button>
+                    </div>
+                </div>
+            </template>
         </div>
     </div>
 </div>
@@ -1167,6 +1287,8 @@ function otpProviderHub() {
         selectedProviderId: <?= (int)($editProv['id'] ?? ($providers[0]['id'] ?? 0)) ?>,
         busyProvider: 0,
         busyAction: '',
+        detailsModal: null,
+        detailsLoading: false,
         notice: { type: 'success', message: '' },
 
         importLoading: false,
@@ -1310,7 +1432,24 @@ function otpProviderHub() {
             }
         },
 
+        async openProviderDetails(providerId) {
+            if (!providerId || this.detailsLoading) return;
+            this.detailsLoading = true;
+            this.detailsModal = null;
+            try {
+                const data = await this.postApi({ action: 'provider_details', provider_id: providerId }, 25000);
+                if (!data.ok) {
+                    this.showNotice('error', data.error || 'Could not load provider details.');
+                    return;
+                }
+                this.detailsModal = data;
+            } finally {
+                this.detailsLoading = false;
+            }
+        },
+
         async runQuickAction(providerId, action) {
+            if (!providerId || this.busyProvider) return;
             this.busyProvider = providerId;
             this.busyAction = action;
             try {
@@ -1346,7 +1485,7 @@ function otpProviderHub() {
         },
 
         async fetchServicePreview() {
-            if (!this.selectedProviderId) return;
+            if (!this.selectedProviderId || this.importLoading) return;
             this.importLoading = true;
             this.importReport = null;
             this.previewSearch = '';
@@ -1447,7 +1586,7 @@ function otpProviderHub() {
         },
 
         async executeImport(mode) {
-            if (!this.selectedProviderId) return;
+            if (!this.selectedProviderId || this.importExecuting) return;
             this.lastImportMode = mode;
 
             // sync_prices runs quickly in a single transaction
@@ -1485,37 +1624,45 @@ function otpProviderHub() {
                 progress_percent: 5,
             };
 
-            const startRes = await this.postApi({
-                action: 'start_import_job',
-                provider_id: this.selectedProviderId,
-                job_type: 'services',
-                mode,
-                staged_job_id: this.stagedJobId || 0,
-                selected_keys: this.selectedKeys,
-                country_code: mode === 'import_by_country' ? countryForImport : this.importForm.apiCountry,
-                service_code: this.importForm.apiService,
-                pricing_mode: this.importForm.pricing_mode,
-                fixed_selling_price: this.importForm.fixed_selling_price,
-                profit_margin: this.importForm.profit_margin,
-                fixed_profit: this.importForm.fixed_profit,
-                min_price: this.importForm.min_price,
-                max_price: this.importForm.max_price,
-                auto_price_update: this.importForm.auto_price_update ? 1 : 0,
-                override_existing_rules: this.importForm.override_existing_rules ? 1 : 0,
-                import_status: this.importForm.import_status,
-                batch_size: 100,
-            });
-
-            if (!startRes.ok) {
+            let startRes = null;
+            try {
+                startRes = await this.postApi({
+                    action: 'start_import_job',
+                    provider_id: this.selectedProviderId,
+                    job_type: 'services',
+                    mode,
+                    staged_job_id: this.stagedJobId || 0,
+                    selected_keys: this.selectedKeys,
+                    country_code: mode === 'import_by_country' ? countryForImport : this.importForm.apiCountry,
+                    service_code: this.importForm.apiService,
+                    pricing_mode: this.importForm.pricing_mode,
+                    fixed_selling_price: this.importForm.fixed_selling_price,
+                    profit_margin: this.importForm.profit_margin,
+                    fixed_profit: this.importForm.fixed_profit,
+                    min_price: this.importForm.min_price,
+                    max_price: this.importForm.max_price,
+                    auto_price_update: this.importForm.auto_price_update ? 1 : 0,
+                    override_existing_rules: this.importForm.override_existing_rules ? 1 : 0,
+                    import_status: this.importForm.import_status,
+                    batch_size: 100,
+                });
+            } catch (e) {
                 this.importExecuting = false;
-                if (startRes.job) {
+                this.activeJob = null;
+                this.showNotice('error', 'Failed to start import job.');
+                return;
+            }
+
+            if (!startRes || !startRes.ok) {
+                this.importExecuting = false;
+                if (startRes && startRes.job) {
                     this.activeJob = startRes.job;
-                } else if (startRes.active_job) {
+                } else if (startRes && startRes.active_job) {
                     this.activeJob = startRes.active_job;
                 } else {
                     this.activeJob = null;
                 }
-                this.showNotice('error', startRes.error || 'Could not start import job.');
+                this.showNotice('error', (startRes && startRes.error) || 'Could not start import job.');
                 return;
             }
 
@@ -1586,7 +1733,7 @@ function otpProviderHub() {
         },
 
         async executeAvailabilitySync() {
-            if (!this.selectedProviderId) return;
+            if (!this.selectedProviderId || this.availLoading) return;
             this.availLoading = true;
             try {
                 const data = await this.postApi({

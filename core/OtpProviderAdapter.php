@@ -85,6 +85,22 @@ class OtpHttpClient
         ?string $secretToRedact = null
     ): array {
         $providerId = (int)($provider['id'] ?? 0);
+        if (!function_exists('curl_init')) {
+            $err = 'PHP cURL extension is not enabled on this server.';
+            $logId = self::logCall($providerId, $activationId, $action, $url, 0, 0, $body, '', 'error', $err, $secretToRedact);
+            return [
+                'ok'               => false,
+                'uncertain'        => false,
+                'http_code'        => 0,
+                'response_time_ms' => 0,
+                'log_id'           => $logId,
+                'error'            => $err,
+                'error_code'       => 'CURL_UNAVAILABLE',
+                'error_category'   => 'config',
+                'raw'              => '',
+                'data'             => null,
+            ];
+        }
         $urlErr = self::validateUrl($url);
         if ($urlErr !== null) {
             $logId = self::logCall($providerId, $activationId, $action, $url, 0, 0, $body, '', 'error', $urlErr, $secretToRedact);
@@ -95,6 +111,8 @@ class OtpHttpClient
                 'response_time_ms' => 0,
                 'log_id'           => $logId,
                 'error'            => $urlErr,
+                'error_code'       => 'INVALID_PROVIDER_URL',
+                'error_category'   => 'config',
                 'raw'              => '',
                 'data'             => null,
             ];
@@ -182,7 +200,15 @@ class OtpHttpClient
 
         if ($raw === false || $curlErrno !== 0) {
             $isUncertain = in_array($curlErrno, [CURLE_OPERATION_TIMEDOUT, CURLE_GOT_NOTHING, CURLE_RECV_ERROR], true);
-            $errMsg = 'Provider connection error: ' . ($curlErr ?: 'Unable to reach provider API');
+            $classified = ProviderErrorHandler::classifyHttpFailure(
+                $httpCode,
+                $curlErrno,
+                $curlErr,
+                '',
+                null,
+                $secretToRedact ? [$secretToRedact] : []
+            );
+            $errMsg = $classified['message'];
             $logId = self::logCall($providerId, $activationId, $action, $url, $httpCode, $elapsedMs, $body, '', 'error', $errMsg, $secretToRedact);
             return [
                 'ok'               => false,
@@ -191,6 +217,8 @@ class OtpHttpClient
                 'response_time_ms' => $elapsedMs,
                 'log_id'           => $logId,
                 'error'            => $errMsg,
+                'error_code'       => $classified['error_code'],
+                'error_category'   => $classified['category'],
                 'raw'              => '',
                 'data'             => null,
             ];
@@ -201,7 +229,18 @@ class OtpHttpClient
         $isHttpOk = ($httpCode >= 200 && $httpCode < 300);
 
         $logStatus = $isHttpOk ? 'ok' : 'error';
-        $errMsg = $isHttpOk ? null : self::extractErrorMessage($rawStr, $decoded, $httpCode);
+        $rawErrMsg = $isHttpOk ? null : self::extractErrorMessage($rawStr, $decoded, $httpCode);
+        $classified = $isHttpOk
+            ? null
+            : ProviderErrorHandler::classifyHttpFailure(
+                $httpCode,
+                0,
+                '',
+                $rawStr,
+                $rawErrMsg,
+                $secretToRedact ? [$secretToRedact] : []
+            );
+        $errMsg = $classified ? $classified['message'] : null;
         $logId = self::logCall($providerId, $activationId, $action, $url, $httpCode, $elapsedMs, $body, $rawStr, $logStatus, $errMsg, $secretToRedact);
 
         if (!$isHttpOk) {
@@ -212,6 +251,8 @@ class OtpHttpClient
                 'response_time_ms' => $elapsedMs,
                 'log_id'           => $logId,
                 'error'            => $errMsg,
+                'error_code'       => $classified['error_code'] ?? 'PROVIDER_HTTP_ERROR',
+                'error_category'   => $classified['category'] ?? 'http',
                 'raw'              => $rawStr,
                 'data'             => is_array($decoded) ? $decoded : null,
             ];
@@ -224,6 +265,8 @@ class OtpHttpClient
             'response_time_ms' => $elapsedMs,
             'log_id'           => $logId,
             'error'            => null,
+            'error_code'       => null,
+            'error_category'   => null,
             'raw'              => $rawStr,
             'data'             => is_array($decoded) ? $decoded : $rawStr,
         ];
@@ -1290,10 +1333,25 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
         $endpointKey = $this->resolveEndpointKey($endpointCandidates);
         if ($endpointKey === null) {
             $primary = $endpointCandidates[0] ?? $action;
-            return ['ok' => false, 'uncertain' => false, 'error' => "Endpoint '{$primary}' is not configured for provider {$this->provider['name']}."];
+            return [
+                'ok'             => false,
+                'uncertain'      => false,
+                'error_code'     => 'ENDPOINT_NOT_CONFIGURED',
+                'error_category' => 'config',
+                'error'          => "Endpoint '{$primary}' is not configured for provider {$this->provider['name']}.",
+            ];
         }
 
         $ep = trim((string)$this->endpoints[$endpointKey]);
+        if (!str_starts_with($ep, 'http://') && !str_starts_with($ep, 'https://') && $this->baseUrl === '') {
+            return [
+                'ok'             => false,
+                'uncertain'      => false,
+                'error_code'     => 'INVALID_CONFIG',
+                'error_category' => 'config',
+                'error'          => 'Provider Base URL is missing. Edit provider settings and set a valid HTTP(S) base URL.',
+            ];
+        }
         $vars['api_key'] = $this->apiKey;
         if (isset($vars['id']) && !isset($vars['order_id'])) {
             $vars['order_id'] = $vars['id'];
@@ -1409,6 +1467,14 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
 
     public function testConnection(): array
     {
+        if ($this->baseUrl === '') {
+            return [
+                'ok'             => false,
+                'error_code'     => 'INVALID_CONFIG',
+                'error_category' => 'config',
+                'error'          => 'Provider Base URL is not configured.',
+            ];
+        }
         return $this->getBalance();
     }
 
@@ -1420,37 +1486,207 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
                 'ok'               => false,
                 'http_code'        => (int)($res['http_code'] ?? 0),
                 'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                'error_code'       => $res['error_code'] ?? 'PROVIDER_ERROR',
+                'error_category'   => $res['error_category'] ?? 'provider',
                 'error'            => $res['error'] ?: 'Invalid balance response from custom provider.',
             ];
         }
-        if (!is_array($res['data'])) {
-            $err = 'Custom provider balance response is not valid JSON.';
+
+        $rawStr = trim((string)($res['raw'] ?? ''));
+        if ($rawStr === '') {
+            $err = 'Provider returned an empty response body for balance check.';
             OtpHttpClient::markLogError((int)($res['log_id'] ?? 0), (int)($this->provider['id'] ?? 0), $err, $this->apiKey);
-            return ['ok' => false, 'error' => $err];
+            return [
+                'ok'               => false,
+                'http_code'        => (int)($res['http_code'] ?? 200),
+                'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                'error_code'       => 'EMPTY_RESPONSE',
+                'error_category'   => 'parse',
+                'error'            => $err,
+            ];
         }
-        $bal = $this->mapVal($res['data'], 'balance', ['balance', 'data.balance', 'wallet', 'credit']);
+
+        // Handle plain-text numeric or ACCESS_BALANCE:amount responses cleanly
+        if (!is_array($res['data'])) {
+            if (str_starts_with(strtoupper($rawStr), 'ACCESS_BALANCE:')) {
+                $amt = trim(substr($rawStr, strlen('ACCESS_BALANCE:')));
+                if (is_numeric($amt)) {
+                    return [
+                        'ok'               => true,
+                        'balance'          => Currency::normalize($amt, 4),
+                        'currency'         => (string)($this->provider['currency_code'] ?: Currency::getBaseCode()),
+                        'http_code'        => (int)($res['http_code'] ?? 200),
+                        'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                        'raw'              => $rawStr,
+                    ];
+                }
+            }
+            if (is_numeric($rawStr)) {
+                return [
+                    'ok'               => true,
+                    'balance'          => Currency::normalize($rawStr, 4),
+                    'currency'         => (string)($this->provider['currency_code'] ?: Currency::getBaseCode()),
+                    'http_code'        => (int)($res['http_code'] ?? 200),
+                    'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                    'raw'              => $rawStr,
+                ];
+            }
+
+            $classified = ProviderErrorHandler::classifyHttpFailure(200, 0, '', $rawStr, null, [$this->apiKey]);
+            $err = $classified['category'] === 'auth'
+                ? $classified['message']
+                : 'Provider balance response is not valid JSON or a numeric balance value.';
+            OtpHttpClient::markLogError((int)($res['log_id'] ?? 0), (int)($this->provider['id'] ?? 0), $err, $this->apiKey);
+            return [
+                'ok'               => false,
+                'http_code'        => (int)($res['http_code'] ?? 200),
+                'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                'error_code'       => $classified['category'] === 'auth' ? 'PROVIDER_AUTH_FAILED' : 'INVALID_RESPONSE_FORMAT',
+                'error_category'   => $classified['category'] === 'auth' ? 'auth' : 'parse',
+                'error'            => $err,
+            ];
+        }
+
+        // Detect application-level error objects returned with HTTP 200
+        $d = $res['data'];
+        if ((isset($d['ok']) && $d['ok'] === false)
+            || (isset($d['success']) && $d['success'] === false)
+            || (isset($d['status']) && in_array(strtolower((string)$d['status']), ['error', 'fail', 'failed'], true))
+            || (!empty($d['error']) && !isset($d['balance']))
+        ) {
+            $provMsg = (string)($d['error'] ?? $d['message'] ?? $d['detail'] ?? 'Provider rejected the balance request.');
+            $classified = ProviderErrorHandler::classifyHttpFailure(200, 0, '', $rawStr, $provMsg, [$this->apiKey]);
+            OtpHttpClient::markLogError((int)($res['log_id'] ?? 0), (int)($this->provider['id'] ?? 0), $classified['message'], $this->apiKey);
+            return [
+                'ok'               => false,
+                'http_code'        => (int)($res['http_code'] ?? 200),
+                'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                'error_code'       => $classified['error_code'],
+                'error_category'   => $classified['category'],
+                'error'            => $classified['message'],
+            ];
+        }
+
+        $bal = $this->mapVal($d, 'balance', ['balance', 'data.balance', 'wallet', 'credit', 'amount', 'result.balance']);
         if ($bal === null || !is_numeric((string)$bal)) {
             $err = 'Balance field could not be read from provider response. Check response JSON mapping.';
             OtpHttpClient::markLogError((int)($res['log_id'] ?? 0), (int)($this->provider['id'] ?? 0), $err, $this->apiKey);
-            return ['ok' => false, 'error' => $err];
+            return [
+                'ok'               => false,
+                'http_code'        => (int)($res['http_code'] ?? 200),
+                'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+                'error_code'       => 'BALANCE_FIELD_MISSING',
+                'error_category'   => 'parse',
+                'error'            => $err,
+            ];
         }
+        $respCurrency = $this->mapVal($d, 'currency', ['currency', 'data.currency']);
         return [
             'ok'               => true,
             'balance'          => Currency::normalize((string)$bal, 4),
-            'currency'         => (string)($this->provider['currency_code'] ?: 'USD'),
+            'currency'         => is_string($respCurrency) && trim($respCurrency) !== '' ? strtoupper(trim($respCurrency)) : (string)($this->provider['currency_code'] ?: Currency::getBaseCode()),
             'http_code'        => (int)($res['http_code'] ?? 200),
             'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
-            'raw'              => $res['data'],
+            'raw'              => $d,
         ];
     }
 
     public function getCountries(): array
     {
-        $res = $this->executeEndpoint('countries', ['countries', 'countries_services']);
-        if (!$res['ok'] || !is_array($res['data'])) {
-            return ['ok' => false, 'error' => $res['error'] ?: 'Unable to fetch countries.'];
+        $epKey = $this->resolveEndpointKey(['countries', 'countries_services']);
+        if ($epKey === null) {
+            // Fall back to country discovery via pricing endpoint if no dedicated countries endpoint is configured
+            $prices = $this->getPrices(null, null);
+            if (empty($prices['ok'])) {
+                return [
+                    'ok'             => false,
+                    'error_code'     => $prices['error_code'] ?? 'ENDPOINT_NOT_CONFIGURED',
+                    'error_category' => $prices['error_category'] ?? 'config',
+                    'error'          => $prices['error'] ?? 'Neither countries nor pricing endpoint is configured for this provider.',
+                    'countries'      => [],
+                ];
+            }
+            return [
+                'ok'        => true,
+                'countries' => $prices['countries'] ?? [],
+                'items'     => $prices['items'] ?? [],
+            ];
         }
-        return ['ok' => true, 'countries' => $res['data']];
+
+        $res = $this->executeEndpoint('countries', [$epKey]);
+        if (!$res['ok'] || !is_array($res['data'])) {
+            return [
+                'ok'             => false,
+                'error_code'     => $res['error_code'] ?? 'PROVIDER_ERROR',
+                'error_category' => $res['error_category'] ?? 'provider',
+                'error'          => $res['error'] ?: 'Unable to fetch countries from provider.',
+                'countries'      => [],
+            ];
+        }
+
+        $payload = $res['data'];
+        if ((isset($payload['ok']) && $payload['ok'] === false) || (isset($payload['status']) && strtolower((string)$payload['status']) === 'error')) {
+            $errMsg = (string)($payload['error'] ?? $payload['message'] ?? 'Provider rejected countries request.');
+            return ['ok' => false, 'error' => ProviderErrorHandler::redact($errMsg, [$this->apiKey]), 'countries' => []];
+        }
+
+        $source = $payload;
+        foreach (['countries', 'data', 'items', 'list', 'result'] as $wk) {
+            if (isset($payload[$wk]) && is_array($payload[$wk])) {
+                $source = $payload[$wk];
+                break;
+            }
+        }
+
+        $normalized = [];
+        $seen = [];
+        $isList = array_is_list($source);
+
+        foreach ($source as $k => $row) {
+            if (is_array($row)) {
+                $code = trim((string)($row['provider_code'] ?? $row['code'] ?? $row['id'] ?? $row['iso'] ?? $row['iso_code'] ?? ($isList ? '' : $k)));
+                if ($code === '') {
+                    continue;
+                }
+                $cInfo = FiveSimCatalogReference::describeCountry($code);
+                $name = trim((string)($row['name'] ?? $row['country_name'] ?? $row['title'] ?? $row['eng'] ?? $cInfo['name']));
+                $iso = strtoupper(trim((string)($row['iso_code'] ?? $row['iso'] ?? $row['alpha2'] ?? $cInfo['iso_code'])));
+                $dial = trim((string)($row['dial_code'] ?? $row['prefix'] ?? $row['phone_code'] ?? $cInfo['dial_code']));
+                $flag = trim((string)($row['flag_emoji'] ?? $row['flag'] ?? $cInfo['flag_emoji']));
+            } elseif (is_string($row) && trim($row) !== '') {
+                $code = trim((string)($isList ? $row : $k));
+                $cInfo = FiveSimCatalogReference::describeCountry($code);
+                $name = trim($isList ? $cInfo['name'] : $row);
+                $iso = $cInfo['iso_code'];
+                $dial = $cInfo['dial_code'];
+                $flag = $cInfo['flag_emoji'];
+            } else {
+                continue;
+            }
+
+            $keyLow = strtolower($code);
+            if (isset($seen[$keyLow])) {
+                continue;
+            }
+            $seen[$keyLow] = true;
+            $normalized[] = [
+                'code'          => $code,
+                'provider_code' => $code,
+                'name'          => $name !== '' ? $name : ucwords(str_replace(['_', '-'], ' ', $code)),
+                'iso'           => $iso,
+                'iso_code'      => $iso,
+                'dial_code'     => $dial,
+                'flag'          => $flag,
+                'flag_emoji'    => $flag,
+            ];
+        }
+
+        return [
+            'ok'               => true,
+            'countries'        => $normalized,
+            'http_code'        => (int)($res['http_code'] ?? 200),
+            'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
+        ];
     }
 
     public function getPrices(?string $countryCode = null, ?string $serviceCode = null): array
@@ -1460,13 +1696,32 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
             'service' => (string)($serviceCode ?? ''),
         ]);
         if (!$res['ok'] || !is_array($res['data'])) {
-            return ['ok' => false, 'error' => $res['error'] ?: 'Unable to fetch pricing list from custom provider.', 'items' => [], 'countries' => []];
+            return [
+                'ok'             => false,
+                'error_code'     => $res['error_code'] ?? 'PROVIDER_ERROR',
+                'error_category' => $res['error_category'] ?? 'provider',
+                'error'          => $res['error'] ?: 'Unable to fetch pricing list from custom provider.',
+                'items'          => [],
+                'countries'      => [],
+            ];
         }
 
-        $currency = (string)($this->provider['currency_code'] ?: 'USD');
+        $currency = (string)($this->provider['currency_code'] ?: Currency::getBaseCode());
         $items = [];
         $countriesMap = [];
         $payload = $res['data'];
+
+        if ((isset($payload['ok']) && $payload['ok'] === false) || (isset($payload['status']) && strtolower((string)$payload['status']) === 'error')) {
+            $errMsg = (string)($payload['error'] ?? $payload['message'] ?? 'Provider rejected pricing request.');
+            return ['ok' => false, 'error' => ProviderErrorHandler::redact($errMsg, [$this->apiKey]), 'items' => [], 'countries' => []];
+        }
+
+        // Unwrap common containers (items / services / prices / data)
+        if (isset($payload['prices']) && is_array($payload['prices'])) {
+            $payload = $payload['prices'];
+        } elseif (isset($payload['data']) && is_array($payload['data']) && !isset($payload['items']) && !isset($payload['services'])) {
+            $payload = $payload['data'];
+        }
 
         // Support array-of-objects list: [{"country": "IN", "service": "whatsapp", "price": 0.50, "count": 20}, ...]
         $list = isset($payload['items']) && is_array($payload['items'])
@@ -1480,6 +1735,8 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
                 $sCode = (string)($row['service_code'] ?? $row['service'] ?? ($serviceCode ?? ''));
                 $cost = $row['price'] ?? $row['cost'] ?? null;
                 if ($cCode === '' || $sCode === '' || $cost === null || !is_numeric((string)$cost)) continue;
+                if ($countryCode !== null && $countryCode !== '' && strcasecmp($cCode, $countryCode) !== 0) continue;
+                if ($serviceCode !== null && $serviceCode !== '' && strcasecmp($sCode, $serviceCode) !== 0) continue;
                 $cInfo = FiveSimCatalogReference::describeCountry($cCode);
                 $sInfo = FiveSimCatalogReference::describeService($sCode);
                 if (!empty($row['country_name'])) $cInfo['name'] = (string)$row['country_name'];
@@ -1506,9 +1763,11 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
             // Support nested country -> service -> {cost/price, count} map
             foreach ($payload as $cKey => $svcs) {
                 if (!is_array($svcs)) continue;
+                if ($countryCode !== null && $countryCode !== '' && strcasecmp((string)$cKey, $countryCode) !== 0) continue;
                 $cInfo = FiveSimCatalogReference::describeCountry((string)$cKey);
                 foreach ($svcs as $sKey => $info) {
                     if (!is_array($info)) continue;
+                    if ($serviceCode !== null && $serviceCode !== '' && strcasecmp((string)$sKey, $serviceCode) !== 0) continue;
                     $cost = $info['cost'] ?? $info['price'] ?? null;
                     if ($cost === null || !is_numeric((string)$cost)) continue;
                     $sInfo = FiveSimCatalogReference::describeService((string)$sKey);
@@ -1534,10 +1793,12 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
         }
 
         return [
-            'ok'        => true,
-            'items'     => $items,
-            'countries' => array_values($countriesMap),
-            'currency'  => $currency,
+            'ok'               => true,
+            'items'            => $items,
+            'countries'        => array_values($countriesMap),
+            'currency'         => $currency,
+            'http_code'        => (int)($res['http_code'] ?? 200),
+            'response_time_ms' => (int)($res['response_time_ms'] ?? 0),
         ];
     }
 
@@ -1584,9 +1845,39 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
         if (!$res['ok'] || !is_array($res['data'])) {
             return ['ok' => false, 'available' => false, 'count' => 0, 'cost' => null, 'error' => $res['error'] ?: 'Pricing lookup failed.'];
         }
-        $cost = $this->mapVal($res['data'], 'cost', ['price', 'cost', 'data.price', 'data.cost']);
-        $count = $this->mapVal($res['data'], 'stock', ['count', 'stock', 'available', 'quantity', 'data.count']);
-        $availFlag = $this->mapVal($res['data'], 'available', ['available', 'in_stock', 'data.available']);
+        $payload = $res['data'];
+        $target = $payload;
+        $svcLow = strtolower($serviceCode);
+        $ctyLow = strtolower($countryCode);
+
+        // Support country-keyed or service-keyed availability maps (e.g. {"whatsapp": 118} or {"in": {"whatsapp": {"cost": 0.35, "count": 118}}})
+        if (isset($payload[$countryCode]) && is_array($payload[$countryCode])) {
+            $payload = $payload[$countryCode];
+        } elseif (isset($payload[$ctyLow]) && is_array($payload[$ctyLow])) {
+            $payload = $payload[$ctyLow];
+        }
+
+        $matchedCount = null;
+        $matchedCost = null;
+        foreach ([$serviceCode, $svcLow, $serviceCode . '_0', $svcLow . '_0'] as $sKey) {
+            if (array_key_exists($sKey, $payload)) {
+                $entry = $payload[$sKey];
+                if (is_numeric($entry)) {
+                    $matchedCount = max(0, (int)$entry);
+                } elseif (is_array($entry)) {
+                    $target = $entry;
+                }
+                break;
+            }
+        }
+
+        $cost = $this->mapVal($target, 'cost', ['price', 'cost', 'data.price', 'data.cost']);
+        $count = $matchedCount !== null
+            ? $matchedCount
+            : $this->mapVal($target, 'stock', ['count', 'stock', 'available', 'quantity', 'data.count']);
+        $availFlag = $matchedCount !== null
+            ? ($matchedCount > 0)
+            : $this->mapVal($target, 'available', ['available', 'in_stock', 'data.available']);
         $isAvail = $availFlag !== null
             ? (bool)$availFlag
             : ($count !== null ? ((int)$count > 0) : ($cost !== null));
@@ -1597,7 +1888,7 @@ class CustomOtpProviderAdapter implements OtpProviderInterface
             'count'     => $count !== null ? (int)$count : ($isAvail ? 1 : 0),
             'cost'      => ($cost !== null && is_numeric((string)$cost)) ? Currency::normalize((string)$cost, 4) : null,
             'operator'  => $operator ?: 'any',
-            'currency'  => (string)($this->provider['currency_code'] ?: 'USD'),
+            'currency'  => (string)($this->provider['currency_code'] ?: Currency::getBaseCode()),
         ];
     }
 
@@ -1724,7 +2015,7 @@ class OtpProviderFactory
 {
     public static function make(array $provider): OtpProviderInterface
     {
-        $type = (string)($provider['adapter_type'] ?? 'fivesim');
+        $type = trim((string)($provider['adapter_type'] ?? 'custom_json'));
         if ($type === 'fivesim') {
             return new FiveSimAdapter($provider);
         }
@@ -1742,6 +2033,9 @@ class OtpProviderFactory
             }
             throw new RuntimeException('Custom PHP adapter class not found or does not implement OtpProviderInterface.');
         }
-        return new CustomOtpProviderAdapter($provider);
+        if ($type === 'custom_json' || $type === '') {
+            return new CustomOtpProviderAdapter($provider);
+        }
+        throw new InvalidArgumentException("Unsupported OTP provider adapter type: {$type}");
     }
 }
